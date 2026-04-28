@@ -236,6 +236,25 @@ class GameRoom {
     const maxScore = Math.max(...Object.values(scores));
     const winners = alive.filter(p => scores[p.id] === maxScore);
 
+    // Single-player: auto-win with actions
+    if (alive.length === 1) {
+      const solo = alive[0];
+      this.rpsChoices = {};
+      this.winners = [solo.id];
+      this.loserCount = 0;
+      this.winnerActions = {};
+      this.winnerOrder = [solo.id];
+      this.winnerActions[solo.id] = 3;
+      this.winnerIdx = 0;
+      this.addLog(`👤 ${this.teamEmoji(solo.team)} ${solo.name} 独自存活！获得 3 次行动`, 'good');
+      setTimeout(() => {
+        this.phase = 'action';
+        this.advanceToNextAlive();
+        broadcast(this);
+      }, 800);
+      return;
+    }
+
     if (maxScore === 0 || winners.length === alive.length) {
       this.addLog('🤝 本轮平局！无人获得行动权', 'warn');
       this.winners = [];

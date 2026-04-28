@@ -329,10 +329,22 @@ const Sfx = {
           o.start(t); o.stop(t + 0.25);
           break;
         case 'destroy':
-          o.type = 'square'; o.frequency.setValueAtTime(200, t);
-          o.frequency.linearRampToValueAtTime(40, t + 0.4);
-          g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
-          o.start(t); o.stop(t + 0.45);
+          // Deep rumble + explosion crash
+          o.type = 'sawtooth';
+          o.frequency.setValueAtTime(120, t);
+          o.frequency.exponentialRampToValueAtTime(20, t + 0.55);
+          g.gain.setValueAtTime(0.30, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.60);
+          o.start(t); o.stop(t + 0.60);
+          const o2 = this.ctx.createOscillator();
+          const g2 = this.ctx.createGain();
+          o2.type = 'square';
+          o2.frequency.setValueAtTime(60, t + 0.03);
+          o2.frequency.exponentialRampToValueAtTime(15, t + 0.45);
+          g2.gain.setValueAtTime(0.20, t + 0.03);
+          g2.gain.exponentialRampToValueAtTime(0.001, t + 0.50);
+          o2.connect(g2); g2.connect(this.ctx.destination);
+          o2.start(t + 0.03); o2.stop(t + 0.50);
           break;
         case 'win':
           const notes = [523, 659, 784, 1047];
