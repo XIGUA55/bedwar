@@ -236,9 +236,8 @@ class GameRoom {
     const maxScore = Math.max(...Object.values(scores));
     const winners = alive.filter(p => scores[p.id] === maxScore);
 
-    // Dead/respawning players count as automatic losers
-    const allPlayers = this.players.filter(p => p.connected !== false).length;
-    const deadLosers = allPlayers - alive.length;
+    // Players waiting to respawn (bed still alive) count as automatic losers
+    const deadLosers = this.players.filter(p => p.respawning && p.connected !== false).length;
 
     if (maxScore === 0 || winners.length === alive.length) {
       // All alive tied: dead players are the only losers
