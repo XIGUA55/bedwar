@@ -784,8 +784,10 @@ function renderRPS() {
     if (state.winners.length === 0) {
       html += '<p style="text-align:center;color:#ffd700;font-size:12px;">🤝 平局！无人获得行动权</p>';
     } else {
-      const perWinner = Math.max(1, state.loserCount);
-      html += `<p style="text-align:center;color:#2ecc71;font-size:13px;margin-top:4px;">🏆 赢家各获得 ${perWinner} 次行动</p>`;
+      const perWinner = state.winnerActions[state.winners[0]] || state.loserCount;
+      const deadCount = state.players.filter(p => p.connected && !p.alive && !p.respawning).length + state.players.filter(p => p.respawning).length;
+      const extra = deadCount > 0 ? ` (含${deadCount}人阵亡)` : '';
+      html += `<p style="text-align:center;color:#2ecc71;font-size:13px;margin-top:4px;">🏆 赢家各获得 ${perWinner} 次行动${extra}</p>`;
     }
   } else {
     // RPS selection phase

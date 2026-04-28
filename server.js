@@ -236,37 +236,43 @@ class GameRoom {
     const maxScore = Math.max(...Object.values(scores));
     const winners = alive.filter(p => scores[p.id] === maxScore);
 
-    // Single-player: auto-win with actions
-    if (alive.length === 1) {
-      const solo = alive[0];
-      this.rpsChoices = {};
-      this.winners = [solo.id];
-      this.loserCount = 0;
+    // Dead/respawning players count as automatic losers
+    const allPlayers = this.players.filter(p => p.connected !== false).length;
+    const deadLosers = allPlayers - alive.length;
+
+    if (maxScore === 0 || winners.length === alive.length) {
+      // All alive tied: dead players are the only losers
+      const loserCount = deadLosers;
+      if (loserCount === 0) {
+        this.addLog('🤝 本轮平局！无人获得行动权', 'warn');
+        this.winners = [];
+        this.loserCount = alive.length;
+        this.winnerActions = {};
+        this.winnerOrder = [];
+        this.winnerIdx = 0;
+        setTimeout(() => { this.startNextRound(); broadcast(this); }, 1500);
+        return;
+      }
+      this.winners = alive.map(p => p.id);
+      this.loserCount = loserCount;
       this.winnerActions = {};
-      this.winnerOrder = [solo.id];
-      this.winnerActions[solo.id] = 3;
+      this.winnerOrder = [...this.winners].sort(() => Math.random() - 0.5);
+      for (const pid of this.winnerOrder) {
+        this.winnerActions[pid] = loserCount;
+      }
       this.winnerIdx = 0;
-      this.addLog(`👤 ${this.teamEmoji(solo.team)} ${solo.name} 独自存活！获得 3 次行动`, 'good');
+      this.advanceToNextAlive();
+      const names = alive.map(p => p.name).join(', ');
+      this.addLog(`🤝 ${names} 平局，因${deadLosers}人阵亡，各获得 ${loserCount} 次行动`, 'good');
       setTimeout(() => {
         this.phase = 'action';
         this.advanceToNextAlive();
         broadcast(this);
-      }, 800);
+      }, 1500);
       return;
     }
 
-    if (maxScore === 0 || winners.length === alive.length) {
-      this.addLog('🤝 本轮平局！无人获得行动权', 'warn');
-      this.winners = [];
-      this.loserCount = alive.length;
-      this.winnerActions = {};
-      this.winnerOrder = [];
-      this.winnerIdx = 0;
-      setTimeout(() => { this.startNextRound(); broadcast(this); }, 1500);
-      return;
-    }
-
-    const loserCount = alive.length - winners.length;
+    const loserCount = deadLosers + (alive.length - winners.length);
     this.winners = winners.map(p => p.id);
     this.loserCount = loserCount;
     this.winnerActions = {};
@@ -279,7 +285,8 @@ class GameRoom {
     this.advanceToNextAlive();
 
     const names = winners.map(p => p.name).join(', ');
-    this.addLog(`🏆 ${names} 获胜！各获得 ${Math.max(1, loserCount)} 次行动`, 'good');
+    const extra = deadLosers > 0 ? ` (含${deadLosers}人阵亡)` : '';
+    this.addLog(`🏆 ${names} 获胜！各获得 ${Math.max(1, loserCount)} 次行动${extra}`, 'good');
 
     setTimeout(() => {
       this.phase = 'action';
