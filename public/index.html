@@ -1032,17 +1032,13 @@ function renderGameOver() {
     let recap = '';
     const gs = state.gameSummary;
     if (gs) {
-      recap += '<div style="text-align:left;margin:12px 0;font-size:13px;line-height:1.8;">';
-      if (gs.mvp && gs.mvp.kills + gs.mvp.beds > 0) {
+      recap += '<div style="text-align:left;margin:10px 0;font-size:13px;line-height:1.9;">';
+      if (gs.mvp) {
         recap += `<div>⭐ MVP：${teamEmoji(gs.mvp.team)} ${gs.mvp.name} (${gs.mvp.kills}杀 ${gs.mvp.beds}拆床)</div>`;
       }
-      if (gs.bestDefense && gs.bestDefense.layers > 0) {
-        recap += `<div>🛡️ 最佳防御：${teamEmoji(gs.bestDefense.team)} ${gs.bestDefense.name} (${gs.bestDefense.layers}层)</div>`;
-      }
-      if (gs.highlights && gs.highlights.length > 0) {
-        recap += '<div style="margin-top:4px;color:#ffd700;">⚡ 关键瞬间：</div>';
-        for (const h of gs.highlights) {
-          recap += `<div style="font-size:11px;opacity:0.9;">${h.msg}</div>`;
+      if (gs.keyStats && gs.keyStats.length > 0) {
+        for (const s of gs.keyStats) {
+          recap += `<div style="font-size:12px;opacity:0.85;">${s.text}</div>`;
         }
       }
       recap += '</div>';

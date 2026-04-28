@@ -94,11 +94,14 @@ class GameRoom {
     this.chatMessages = [];
     this.winnerTeam = null;
     this.lastWinner = null;  // persisted across games, displayed in lobby
-    this.roundStats = {};     // playerId -> { kills, bedsDestroyed }
+    this.roundStats = {};     // playerId -> expanded stats
     this.lastEvents = [];     // recent events for toast/sfx on clients
     this.rpsHistory = {};     // playerId -> ['rock', 'paper', ...]
     this.roundNumber = 0;     // current round count
     this.highlights = [];     // key moments for post-game recap
+    this.bedDestroyLog = [];  // { byTeam, byPlayer, toTeam, round }
+    this.finalKillLog = [];   // { byTeam, byPlayer, toTeam, round }
+    this.gameStartTime = 0;
 
     const map = buildMap(this.teams);
     this.locations = map.locations;
@@ -191,8 +194,11 @@ class GameRoom {
     this.lastEvents = [];
     this.rpsHistory = {};
     this.highlights = [];
+    this.bedDestroyLog = [];
+    this.finalKillLog = [];
+    this.gameStartTime = Date.now();
     this.roundNumber = 1;
-    for (const p of this.players) { this.roundStats[p.id] = { kills: 0, bedsDestroyed: 0 }; this.rpsHistory[p.id] = []; }
+    for (const p of this.players) { this.roundStats[p.id] = { kills: 0, bedsDestroyed: 0, finalKills: 0, rpsWins: 0, rpsAttempts: 0, shopSpent: 0, deaths: 0, firstDeathRound: 0 }; this.rpsHistory[p.id] = []; }
     this.addLog(`🎮 游戏开始！${this.teams.length} 支队伍展开对决！`, 'info');
   }
 
@@ -218,8 +224,9 @@ class GameRoom {
     const alive = this.alivePlayers();
     const choices = this.rpsChoices;
 
-    // Record history for each alive player
+    // Track RPS attempts and record history
     for (const p of alive) {
+      this.roundStats[p.id].rpsAttempts++;
       if (!this.rpsHistory[p.id]) this.rpsHistory[p.id] = [];
       this.rpsHistory[p.id].push(choices[p.id]);
     }
@@ -260,6 +267,7 @@ class GameRoom {
       this.winnerOrder = [...this.winners].sort(() => Math.random() - 0.5);
       for (const pid of this.winnerOrder) {
         this.winnerActions[pid] = loserCount;
+        this.roundStats[pid].rpsWins++;
       }
       this.winnerIdx = 0;
       this.advanceToNextAlive();
@@ -281,6 +289,7 @@ class GameRoom {
 
     for (const pid of this.winnerOrder) {
       this.winnerActions[pid] = Math.max(1, loserCount);
+      this.roundStats[pid].rpsWins++;
     }
     this.winnerIdx = 0;
     this.advanceToNextAlive();
@@ -353,6 +362,8 @@ class GameRoom {
     target.tnt = false;
     target.shopPoints = 0;
     target.location = target.team + '_lower';
+    this.roundStats[target.id].deaths++;
+    if (!this.roundStats[target.id].firstDeathRound) this.roundStats[target.id].firstDeathRound = this.roundNumber;
     this.winnerActions[actor.id]--;
     this.roundStats[actor.id].kills++;
     this.lastEvents.push({ type: 'kill', killerTeam: actor.team, killerName: actor.name, targetTeam: target.team, targetName: target.name });
@@ -360,6 +371,8 @@ class GameRoom {
 
     if (this.teamEliminated(target.team)) {
       this.teams.find(t => t.id === target.team).bedAlive = false;
+      this.roundStats[actor.id].finalKills++;
+      this.finalKillLog.push({ byTeam: actor.team, byPlayer: actor.name, toTeam: target.team, round: this.roundNumber });
       this.addLog(`💀 ${this.teamName(target.team)} 被淘汰！全员阵亡`, 'warn');
     }
 
@@ -385,6 +398,7 @@ class GameRoom {
     this.roundStats[actor.id].bedsDestroyed++;
     this.lastEvents.push({ type: 'bedDestroy', killerTeam: actor.team, killerName: actor.name, targetTeam: t.id });
     this.highlights.push({ type: 'bedDestroy', msg: `🛏️ ${this.teamEmoji(actor.team)} ${actor.name} 摧毁了 ${this.teamName(t.id)} 的床` });
+    this.bedDestroyLog.push({ byTeam: actor.team, byPlayer: actor.name, toTeam: t.id, round: this.roundNumber });
     this.addLog(`🛏️ ${this.teamEmoji(actor.team)} ${actor.name} 摧毁了 ${this.teamName(t.id)} 的床！`, 'warn');
 
     if (this.teamEliminated(t.id)) {
@@ -414,6 +428,7 @@ class GameRoom {
     if (actor.location !== 'shop') return false;
     actor.shopPoints++;
     this.winnerActions[actor.id]--;
+    this.roundStats[actor.id].shopSpent++;
     this.addLog(`💰 ${this.teamEmoji(actor.team)} ${actor.name} 储蓄行动点 (共${actor.shopPoints}点)`, '');
     this.advanceAction();
     return true;
@@ -437,6 +452,7 @@ class GameRoom {
       const fromSave = Math.min(savings, cost);
       actor.shopPoints -= fromSave;
       this.winnerActions[actor.id] -= (cost - fromSave);
+      this.roundStats[actor.id].shopSpent += cost;
       myTeam.defense++;
       this.addLog(`🛡️ ${this.teamEmoji(actor.team)} ${actor.name} 加固了床防御 (${myTeam.defense}层)`, '');
     } else if (item === 'pickaxe') {
@@ -448,6 +464,7 @@ class GameRoom {
       const fromSave = Math.min(savings, cost);
       actor.shopPoints -= fromSave;
       this.winnerActions[actor.id] -= (cost - fromSave);
+      this.roundStats[actor.id].shopSpent += cost;
       actor.pickaxe++;
       const names = ['无镐','木镐','铁镐','钻石镐'];
       this.addLog(`⛏️ ${this.teamEmoji(actor.team)} ${actor.name} 升级到 ${names[actor.pickaxe]}`, '');
@@ -457,6 +474,7 @@ class GameRoom {
       const fromSave = Math.min(savings, cost);
       actor.shopPoints -= fromSave;
       this.winnerActions[actor.id] -= (cost - fromSave);
+      this.roundStats[actor.id].shopSpent += cost;
       actor.enderPearl++;
       this.addLog(`🟣 ${this.teamEmoji(actor.team)} ${actor.name} 购买了末影珍珠 (共${actor.enderPearl}颗)`, '');
     } else if (item === 'tnt') {
@@ -466,6 +484,7 @@ class GameRoom {
       const fromSave = Math.min(savings, cost);
       actor.shopPoints -= fromSave;
       this.winnerActions[actor.id] -= (cost - fromSave);
+      this.roundStats[actor.id].shopSpent += cost;
       actor.tnt = true;
       this.addLog(`💣 ${this.teamEmoji(actor.team)} ${actor.name} 购买了TNT`, '');
     } else {
@@ -544,6 +563,8 @@ class GameRoom {
     actor.tnt = false;
     actor.shopPoints = 0;
     actor.location = actor.team + '_lower';
+    this.roundStats[actor.id].deaths++;
+    if (!this.roundStats[actor.id].firstDeathRound) this.roundStats[actor.id].firstDeathRound = this.roundNumber;
     this.winnerActions[actor.id]--;
     this.addLog(`💀 ${this.teamEmoji(actor.team)} ${actor.name} 自杀了`, 'warn');
     this.lastEvents.push({ type: 'suicide', team: actor.team, killerName: actor.name });
@@ -611,21 +632,114 @@ class GameRoom {
   }
 
   compileGameSummary() {
-    let mvp = null, mvpKills = 0, mvpBeds = 0;
+    const duration = Math.round((Date.now() - this.gameStartTime) / 1000);
+    const min = Math.floor(duration / 60);
+    const sec = duration % 60;
+
+    // MVP score: kill=1, bedDestroy=5, finalKill=3
+    let mvp = null, mvpScore = -1;
+    const playerStats = {};
     for (const p of this.players) {
-      const rs = this.roundStats[p.id] || { kills: 0, bedsDestroyed: 0 };
-      if (rs.kills + rs.bedsDestroyed > mvpKills + mvpBeds) {
-        mvp = p; mvpKills = rs.kills; mvpBeds = rs.bedsDestroyed;
+      const rs = this.roundStats[p.id] || { kills:0, bedsDestroyed:0, finalKills:0, rpsWins:0, rpsAttempts:0, shopSpent:0, deaths:0, firstDeathRound:0 };
+      const score = rs.kills + rs.bedsDestroyed * 5 + rs.finalKills * 3;
+      playerStats[p.id] = { ...rs, score };
+      if (score > mvpScore) { mvp = p; mvpScore = score; }
+    }
+
+    // Collect candidate key stats
+    const candidates = [];
+    const ps = (id) => playerStats[id] || {};
+
+    // RPS win rates (exclude players who never attempted)
+    let bestRPS = null, worstRPS = null;
+    for (const p of this.players) {
+      const st = ps(p.id);
+      if (st.rpsAttempts === 0) continue;
+      const rate = Math.round(st.rpsWins / st.rpsAttempts * 100);
+      if (!bestRPS || rate > bestRPS.rate) bestRPS = { name: p.name, team: p.team, rate, wins: st.rpsWins, att: st.rpsAttempts };
+      if (!worstRPS || (rate < worstRPS.rate && st.rpsAttempts > 0)) worstRPS = { name: p.name, team: p.team, rate, wins: st.rpsWins, att: st.rpsAttempts };
+    }
+    if (bestRPS && bestRPS.rate > 0 && bestRPS.att >= 2)
+      candidates.push({ type:'bestRPS', text: `${this.teamEmoji(bestRPS.team)} ${bestRPS.name} 的SRP胜率高达 ${bestRPS.rate}%！(${bestRPS.wins}/${bestRPS.att})` });
+    if (worstRPS && worstRPS.rate < 100 && worstRPS.att >= 2)
+      candidates.push({ type:'worstRPS', text: `${this.teamEmoji(worstRPS.team)} ${worstRPS.name} 的SRP胜率仅 ${worstRPS.rate}%... (${worstRPS.wins}/${worstRPS.att})` });
+
+    // Most kills
+    let mostKills = null;
+    for (const p of this.players) { const k = ps(p.id).kills; if (k > (mostKills?.kills || 0)) mostKills = { name: p.name, team: p.team, kills: k }; }
+    if (mostKills && mostKills.kills > 0)
+      candidates.push({ type:'mostKills', text: `${this.teamEmoji(mostKills.team)} ${mostKills.name} 击杀最多 (${mostKills.kills}次)` });
+
+    // Most shop spending
+    let mostShop = null;
+    for (const p of this.players) { const s = ps(p.id).shopSpent; if (s > (mostShop?.spent || 0)) mostShop = { name: p.name, team: p.team, spent: s }; }
+    if (mostShop && mostShop.spent > 0)
+      candidates.push({ type:'mostShop', text: `${this.teamEmoji(mostShop.team)} ${mostShop.name} 商店消费最多 (${mostShop.spent}点)` });
+
+    // Most bed destroys (>=2)
+    let mostBeds = null;
+    for (const p of this.players) { const b = ps(p.id).bedsDestroyed; if (b > (mostBeds?.beds || 0)) mostBeds = { name: p.name, team: p.team, beds: b }; }
+    if (mostBeds && mostBeds.beds >= 2)
+      candidates.push({ type:'mostBeds', text: `🛏️ ${this.teamEmoji(mostBeds.team)} ${mostBeds.name} 拆床最多 (${mostBeds.beds}次)` });
+
+    // Most final kills (>=2)
+    let mostFinal = null;
+    for (const p of this.players) { const f = ps(p.id).finalKills; if (f > (mostFinal?.finals || 0)) mostFinal = { name: p.name, team: p.team, finals: f }; }
+    if (mostFinal && mostFinal.finals >= 2)
+      candidates.push({ type:'mostFinal', text: `💀 ${this.teamEmoji(mostFinal.team)} ${mostFinal.name} 终结最多 (${mostFinal.finals}次)` });
+
+    // Most deaths
+    let mostDeaths = null;
+    for (const p of this.players) { const d = ps(p.id).deaths; if (d > (mostDeaths?.deaths || 0)) mostDeaths = { name: p.name, team: p.team, deaths: d }; }
+    if (mostDeaths && mostDeaths.deaths > 0)
+      candidates.push({ type:'mostDeaths', text: `😵 ${this.teamEmoji(mostDeaths.team)} ${mostDeaths.name} 阵亡最多 (${mostDeaths.deaths}次)` });
+
+    // Match duration
+    candidates.push({ type:'duration', text: `⏱️ 本局仅耗时 ${min}:${sec.toString().padStart(2,'0')}！` });
+
+    // Fastest death
+    let fastest = null;
+    for (const p of this.players) { const fd = ps(p.id).firstDeathRound; if (fd > 0 && (!fastest || fd < fastest.round)) fastest = { name: p.name, team: p.team, round: fd }; }
+    if (fastest)
+      candidates.push({ type:'fastestDeath', text: `💨 ${this.teamEmoji(fastest.team)} ${fastest.name} 在第${fastest.round}轮就阵亡了` });
+
+    // Revenge: X destroyed Y's bed, then Y destroyed X's bed
+    for (const a of this.bedDestroyLog) {
+      for (const b of this.bedDestroyLog) {
+        if (a.byTeam === b.toTeam && a.toTeam === b.byTeam && a.round < b.round) {
+          candidates.push({ type:'revenge', text: `🔁 ${this.teamEmoji(b.byTeam)} ${b.byPlayer} 完成了对 ${this.teamEmoji(a.byTeam)} 的复仇！` });
+          break;
+        }
       }
     }
-    let bestDefTeam = null, bestDef = 0;
-    for (const t of this.teams) {
-      if ((t.defense || 0) > bestDef) { bestDefTeam = t; bestDef = t.defense || 0; }
+
+    // Counter-kill (反杀): X destroyed Y's bed, then Y destroyed X's bed AND got the final kill
+    for (const a of this.bedDestroyLog) {
+      for (const fk of this.finalKillLog) {
+        if (fk.toTeam === a.byTeam && a.toTeam === fk.byTeam && a.round < fk.round) {
+          for (const b of this.bedDestroyLog) {
+            if (b.toTeam === a.byTeam && b.byTeam === a.toTeam && b.round > a.round && b.round < fk.round + 2) {
+              candidates.push({ type:'counterKill', text: `⚡ ${this.teamEmoji(fk.byTeam)} ${fk.byPlayer} 完成了对 ${this.teamEmoji(a.byTeam)} 的反杀！` });
+              break;
+            }
+          }
+        }
+      }
     }
+
+    // Randomly pick 2 candidates (excluding duration which is always shown)
+    const nonDuration = candidates.filter(c => c.type !== 'duration');
+    const picked = [];
+    while (nonDuration.length > 0 && picked.length < 2) {
+      const idx = Math.floor(Math.random() * nonDuration.length);
+      picked.push(nonDuration.splice(idx, 1)[0]);
+    }
+    const keyStats = [...candidates.filter(c => c.type === 'duration'), ...picked];
+
+    const mvpRS = playerStats[mvp?.id] || { kills:0, bedsDestroyed:0, finalKills:0 };
     this.gameSummary = {
-      mvp: mvp ? { name: mvp.name, team: mvp.team, kills: mvpKills, beds: mvpBeds } : null,
-      bestDefense: bestDefTeam ? { team: bestDefTeam.id, name: bestDefTeam.name, layers: bestDef } : null,
-      highlights: this.highlights.slice(-5),
+      mvp: mvp ? { name: mvp.name, team: mvp.team, kills: mvpRS.kills, beds: mvpRS.bedsDestroyed, score: mvpScore } : null,
+      keyStats: keyStats.slice(0, 5),
     };
   }
 
