@@ -234,3 +234,14 @@ body.chat-open #app { padding-bottom: 180px; }
 .toast.info { background: rgba(40,120,220,0.92); color: #fff; }
 @keyframes toastIn { from { transform: translateY(-40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-20px); } }
+
+/* Speech bubble for RPS claims */
+.claim-bubble { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); background: #fff; color: #222; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 10px; white-space: nowrap; z-index: 5; pointer-events: none; animation: claimPop 0.3s ease; }
+.claim-bubble::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #fff; }
+@keyframes claimPop { from { transform: translateX(-50%) scale(0); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+
+/* Timer bar */
+.timer-bar { height: 3px; background: #333; border-radius: 2px; margin: 2px 0; overflow: hidden; }
+.timer-bar-fill { height: 100%; background: #ffd700; transition: width 0.3s linear; }
+.timer-bar-fill.urgent { background: #e74c3c; }
+.timer-text { font-size: 10px; color: #888; text-align: center; }

@@ -114,6 +114,17 @@ io.on('connection', (socket) => {
     callback({ ok: true });
   });
 
+  socket.on('claim', (data) => {
+    const rec = socketRooms[socket.id];
+    if (!rec) return;
+    const room = rooms[rec.code];
+    if (!room || room.phase !== 'prepare') return;
+    const player = room.players.find(p => p.id === rec.playerId);
+    if (!player || !player.alive || player.respawning) return;
+    const c = data.choice;
+    if (['rock','paper','scissors'].includes(c)) { room.claims[rec.playerId] = c; broadcast(room); }
+  });
+
   socket.on('rpsChoice', (data, callback) => {
     const rec = socketRooms[socket.id];
     if (!rec) { callback({ ok: false }); return; }

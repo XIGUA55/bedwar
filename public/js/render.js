@@ -29,6 +29,9 @@ function render() {
   }
   document.getElementById('board-overlay').innerHTML = '';
 
+  // Timer for timed phases
+  if (state.phaseEndTime) updateTimerBar(state);
+
   if (state.phase === 'lobby') {
     renderLobby();
   } else {
@@ -168,6 +171,15 @@ function renderMap() {
       html += '</div>';
     }
 
+    // Speech bubbles for claims during prepare/rps phase
+    const RPS_EMOJI_MAP = { rock:'✊', paper:'✋', scissors:'✌️' };
+    const playersHere = state.players.filter(p => p.alive && !p.respawning && p.location === lid && state.claims && state.claims[p.id]);
+    if (playersHere.length > 0 && (state.phase === 'prepare' || state.phase === 'rps')) {
+      for (const p of playersHere) {
+        html += `<div class="claim-bubble">${RPS_EMOJI_MAP[state.claims[p.id]]} 我要出${state.claims[p.id] === 'rock' ? '石头' : state.claims[p.id] === 'paper' ? '布' : '剪刀'}</div>`;
+      }
+    }
+
     const deadHere = state.players.filter(p => !p.alive && p.location === lid);
     if (deadHere.length > 0 && here.length === 0) {
       html += '<div class="loc-players">';
@@ -210,10 +222,46 @@ function renderTeams() {
 
 function renderRPS() {
   const el = document.getElementById('rps-section');
-  if (state.phase !== 'rps' && state.phase !== 'reveal') { el.style.display = 'none'; return; }
+  if (state.phase !== 'rps' && state.phase !== 'reveal' && state.phase !== 'prepare') { el.style.display = 'none'; return; }
   el.style.display = '';
 
   let html = '<h3>✊ 石头剪刀布</h3>';
+
+  if (state.phase === 'prepare') {
+    const me = state.players.find(p => p.id === myPlayerId);
+    html += '<p style="text-align:center;color:#ffd700;font-size:12px;margin-bottom:6px;">🎭 准备阶段 — 可以公开宣言</p>';
+    if (me && me.alive && !me.respawning && me.connected !== false) {
+      const myClaim = state.claims && state.claims[me.id];
+      if (myClaim) {
+        html += `<div style="text-align:center;padding:8px;font-size:14px;color:#2ecc71;">✅ 已宣言：我要出 ${RPS_EMOJI[myClaim]} ${RPS_LABEL[myClaim]}</div>`;
+      } else {
+        html += '<p style="text-align:center;color:#ffd700;font-size:12px;margin-bottom:4px;">👆 公开宣言（可不选）</p>';
+        for (const c of RPS) {
+          html += `<button class="rps-big-btn" style="border-color:#9b59b6;min-height:44px;" onclick="socket.emit('claim',{choice:'${c}'});render();">`;
+          html += `<span class="emoji-big">${RPS_EMOJI[c]}</span>`;
+          html += `<span class="label-big">宣称出${RPS_LABEL[c]}</span></button>`;
+        }
+      }
+    }
+    // Player status list in prepare phase
+    html += '<div style="margin-top:10px;border-top:1px solid #333;padding-top:6px;">';
+    html += '<p style="font-size:11px;color:#666;margin-bottom:4px;">玩家状态</p>';
+    for (const p of state.players) {
+      if (!p.connected) continue;
+      if (p.respawning) {
+        html += `<div class="rps-status-row" style="opacity:0.6"><span style="color:${teamColor(p.team)}">${teamEmoji(p.team)}</span> ${p.name} <span style="margin-left:auto;color:#e67e22;">⏳ 复活中</span></div>`;
+      } else if (!p.alive) {
+        html += `<div class="rps-status-row" style="opacity:0.4"><span style="color:${teamColor(p.team)}">${teamEmoji(p.team)}</span> ${p.name} <span style="margin-left:auto;color:#e74c3c;">💀 阵亡</span></div>`;
+      } else {
+        const claimed = state.claims && state.claims[p.id];
+        html += `<div class="rps-status-row"><span style="color:${teamColor(p.team)}">${teamEmoji(p.team)}</span> ${p.name}`;
+        html += `<span class="choice-em" style="color:${claimed ? '#9b59b6' : '#888'}">${claimed ? RPS_EMOJI[claimed] : '—'}</span>`;
+        html += `</div>`;
+      }
+    }
+    html += '</div>';
+    el.innerHTML = html; return;
+  }
 
   if (state.phase === 'reveal') {
     html += '<p style="text-align:center;color:#ffd700;font-size:12px;margin-bottom:6px;">📢 结果已揭晓</p>';
@@ -472,7 +520,24 @@ function teamName(tid) {
 }
 
 window.addEventListener('resize', () => { if (state && state.phase !== 'lobby') renderMap(); });
-document.getElementById('chat-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendChat();
-});
-connect();
+
+function updateTimerBar(s) {
+  const ov = document.getElementById('board-overlay');
+  if (!s.phaseEndTime || s.phase === 'reveal' || s.phase === 'gameover') {
+    ov.innerHTML = ''; return;
+  }
+  const now = Date.now();
+  const total = s.phase === 'action' && s.currentActorId === s.myPlayerId
+    ? (s.actionEndTime - (s.phaseEndTime - (s.phase === 'rps' ? 20000 : s.phase === 'prepare' ? 5000 : 15000)))
+    : (s.phaseEndTime - now + (s.phaseEndTime < now ? 5000 : 0));
+  
+  // Simpler: just show remaining seconds
+  const endTime = (s.phase === 'action' && s.currentActorId === s.myPlayerId) ? s.actionEndTime : s.phaseEndTime;
+  const remaining = Math.max(0, Math.round((endTime - now) / 1000));
+  const pct = Math.min(100, Math.max(0, remaining / (s.phase === 'prepare' ? 5 : s.phase === 'rps' ? 20 : 15) * 100));
+  const urgent = remaining <= 3;
+  const label = s.phase === 'prepare' ? `🎭 公开宣言 ${remaining}s`
+    : s.phase === 'rps' ? `✊ 选择手势 ${remaining}s`
+    : `⚡ 行动 ${remaining}s`;
+  ov.innerHTML = `<div style="text-align:center;font-size:13px;color:#ffd700;margin-bottom:2px;">${label}</div><div class="timer-bar"><div class="timer-bar-fill${urgent?' urgent':''}" style="width:${pct}%"></div></div>`;
+}
