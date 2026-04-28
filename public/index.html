@@ -513,8 +513,10 @@ function doRPS(choice) {
 }
 
 function doAction(action, target) {
-  // 'buy' passes item name as target
-  const payload = action === 'buy' ? { action, item: target } : { action, target };
+  // 'buy' passes item name as target, 'save' has no target
+  const payload = action === 'buy' ? { action, item: target }
+    : action === 'save' ? { action : 'save' }
+    : { action, target };
   socket.emit('performAction', payload, (res) => {
     if (res && !res.ok) console.log('Action failed', action);
   });
@@ -858,7 +860,8 @@ function renderActions() {
   let inv = [pn];
   if (actor.enderPearl > 0) inv.push(`🟣${actor.enderPearl > 1 ? '×'+actor.enderPearl : ''}`);
   if (actor.tnt) inv.push('💣');
-  html += `<div class="action-info">${actor.name} 行动中 · ${inv.join(' ')}<br>剩余: <b>${rem}</b> 次 ${isMe ? '(轮到你!)' : '(等待中...)'}</div>`;
+  const sp = actor.shopPoints || 0;
+  html += `<div class="action-info">${actor.name} 行动中 · ${inv.join(' ')}${sp > 0 ? ` · 💰储蓄${sp}` : ''}<br>剩余: <b>${rem}</b> 次 ${isMe ? '(轮到你!)' : '(等待中...)'}</div>`;
 
   if (!isMe) { el.innerHTML = html; return; }
 
@@ -876,23 +879,31 @@ function renderActions() {
 
   // Shop
   if (actor.location === 'shop') {
+    const sp = actor.shopPoints || 0;
+    // Save button
+    html += `<button class="action-btn" style="border-color:#ffd700;" onclick="doAction('save');render();">💰 储蓄1行动点 (已有${sp}点)</button>`;
     const myTeam = state.teams.find(t => t.id === actor.team);
     if (myTeam) {
       if (myTeam.defense < 20) {
         const cost = myTeam.defense < 10 ? 1 : 2;
-        html += `<button class="action-btn" style="border-color:#3498db;" onclick="doAction('buy','defense');render();">🛡️ 加固床防御 (${cost}行动) [${myTeam.defense}/20层]</button>`;
+        const need = Math.max(0, cost - sp);
+        html += `<button class="action-btn" style="border-color:#3498db;" onclick="doAction('buy','defense');render();">🛡️ 加固床防御 (需${cost}点${need>0 ? ' 还差'+need : ''}) [${myTeam.defense}/20层]</button>`;
       }
       if (actor.pickaxe < 3) {
-        const costs = {0:'1',1:'2',2:'3'};
+        const costs = {0:1,1:2,2:3};
         const names = ['木镐','铁镐','钻石镐'];
-        html += `<button class="action-btn" style="border-color:#3498db;" onclick="doAction('buy','pickaxe');render();">⛏️ 升级${names[actor.pickaxe]} (${costs[actor.pickaxe]}行动)</button>`;
+        const cost = costs[actor.pickaxe];
+        const need = Math.max(0, cost - sp);
+        html += `<button class="action-btn" style="border-color:#3498db;" onclick="doAction('buy','pickaxe');render();">⛏️ 升级${names[actor.pickaxe]} (需${cost}点${need>0 ? ' 还差'+need : ''})</button>`;
       }
     }
     if (actor.enderPearl < 3) {
-      html += `<button class="action-btn" style="border-color:#9b59b6;" onclick="doAction('buy','enderPearl');render();">🟣 购买末影珍珠 (3行动) [${actor.enderPearl}/3]</button>`;
+      const need = Math.max(0, 3 - sp);
+      html += `<button class="action-btn" style="border-color:#9b59b6;" onclick="doAction('buy','enderPearl');render();">🟣 购买末影珍珠 (需3点${need>0 ? ' 还差'+need : ''}) [${actor.enderPearl}/3]</button>`;
     }
     if (!actor.tnt) {
-      html += `<button class="action-btn" style="border-color:#e74c3c;" onclick="doAction('buy','tnt');render();">💣 购买TNT (4行动)</button>`;
+      const need = Math.max(0, 4 - sp);
+      html += `<button class="action-btn" style="border-color:#e74c3c;" onclick="doAction('buy','tnt');render();">💣 购买TNT (需4点${need>0 ? ' 还差'+need : ''})</button>`;
     }
   }
 

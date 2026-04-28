@@ -127,6 +127,7 @@ class GameRoom {
           connected: true,
           pickaxe: 0,  enderPearl: 0,  tnt: false,
           respawning: false,  respawnRound: 0,
+          shopPoints: 0,
         };
         this.players.push(p);
         this.addLog(`${t.emoji} ${p.name} 加入房间`, 'info');
@@ -169,6 +170,7 @@ class GameRoom {
       p.connected = true;
       p.pickaxe = 0;  p.enderPearl = 0;  p.tnt = false;
       p.respawning = false;  p.respawnRound = 0;
+      p.shopPoints = 0;
     }
     for (const t of this.teams) t.defense = 0;
     this.phase = 'rps';
@@ -298,6 +300,10 @@ class GameRoom {
     if (!loc || !loc.conns.includes(targetId)) return false;
 
     actor.location = targetId;
+    if (actor.shopPoints > 0 && targetId !== 'shop') {
+      this.addLog(`💸 ${this.teamEmoji(actor.team)} ${actor.name} 离开商店，储蓄清零`, '');
+      actor.shopPoints = 0;
+    }
     this.winnerActions[actor.id]--;
     this.addLog(`🚶 ${this.teamEmoji(actor.team)} ${actor.name} 移动到 ${this.locations[targetId].name}`, '');
     this.advanceAction();
@@ -318,6 +324,7 @@ class GameRoom {
     target.pickaxe = Math.max(1, target.pickaxe - 1);
     target.enderPearl = 0;
     target.tnt = false;
+    target.shopPoints = 0;
     target.location = target.team + '_lower';
     this.winnerActions[actor.id]--;
     this.roundStats[actor.id].kills++;
@@ -372,6 +379,18 @@ class GameRoom {
   }
 
   // ======== SHOP & ITEMS ========
+  save(playerId) {
+    const actor = this.currentActor();
+    if (!actor || actor.id !== playerId) return false;
+    if ((this.winnerActions[actor.id] || 0) <= 0) return false;
+    if (actor.location !== 'shop') return false;
+    actor.shopPoints++;
+    this.winnerActions[actor.id]--;
+    this.addLog(`💰 ${this.teamEmoji(actor.team)} ${actor.name} 储蓄行动点 (共${actor.shopPoints}点)`, '');
+    this.advanceAction();
+    return true;
+  }
+
   buy(playerId, item) {
     const actor = this.currentActor();
     if (!actor || actor.id !== playerId) return false;
@@ -379,35 +398,47 @@ class GameRoom {
     const myTeam = this.teams.find(t => t.id === actor.team);
     if (!myTeam) return false;
 
+    const actions = this.winnerActions[actor.id] || 0;
+    const savings = actor.shopPoints || 0;
+    const total = actions + savings;
+
     if (item === 'defense') {
       const cost = myTeam.defense < 10 ? 1 : 2;
       if (myTeam.defense >= 20) return false;
-      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      if (total < cost) return false;
+      const fromSave = Math.min(savings, cost);
+      actor.shopPoints -= fromSave;
+      this.winnerActions[actor.id] -= (cost - fromSave);
       myTeam.defense++;
-      this.winnerActions[actor.id] -= cost;
       this.addLog(`🛡️ ${this.teamEmoji(actor.team)} ${actor.name} 加固了床防御 (${myTeam.defense}层)`, '');
     } else if (item === 'pickaxe') {
       const costs = { 0:1, 1:2, 2:3 };
       const level = actor.pickaxe;
       if (level >= 3) return false;
       const cost = costs[level];
-      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      if (total < cost) return false;
+      const fromSave = Math.min(savings, cost);
+      actor.shopPoints -= fromSave;
+      this.winnerActions[actor.id] -= (cost - fromSave);
       actor.pickaxe++;
-      this.winnerActions[actor.id] -= cost;
       const names = ['无镐','木镐','铁镐','钻石镐'];
       this.addLog(`⛏️ ${this.teamEmoji(actor.team)} ${actor.name} 升级到 ${names[actor.pickaxe]}`, '');
     } else if (item === 'enderPearl') {
       const cost = 3;
-      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      if (total < cost) return false;
+      const fromSave = Math.min(savings, cost);
+      actor.shopPoints -= fromSave;
+      this.winnerActions[actor.id] -= (cost - fromSave);
       actor.enderPearl++;
-      this.winnerActions[actor.id] -= cost;
       this.addLog(`🟣 ${this.teamEmoji(actor.team)} ${actor.name} 购买了末影珍珠 (共${actor.enderPearl}颗)`, '');
     } else if (item === 'tnt') {
       const cost = 4;
       if (actor.tnt) return false;
-      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      if (total < cost) return false;
+      const fromSave = Math.min(savings, cost);
+      actor.shopPoints -= fromSave;
+      this.winnerActions[actor.id] -= (cost - fromSave);
       actor.tnt = true;
-      this.winnerActions[actor.id] -= cost;
       this.addLog(`💣 ${this.teamEmoji(actor.team)} ${actor.name} 购买了TNT`, '');
     } else {
       return false;
@@ -482,6 +513,7 @@ class GameRoom {
     actor.pickaxe = Math.max(1, actor.pickaxe - 1);
     actor.enderPearl = 0;
     actor.tnt = false;
+    actor.shopPoints = 0;
     actor.location = actor.team + '_lower';
     this.winnerActions[actor.id]--;
     this.addLog(`💀 ${this.teamEmoji(actor.team)} ${actor.name} 自杀了`, 'warn');
@@ -556,6 +588,7 @@ class GameRoom {
       p.connected = p.connected !== false;
       p.pickaxe = 0; p.enderPearl = 0; p.tnt = false;
       p.respawning = false; p.respawnRound = 0;
+      p.shopPoints = 0;
     }
     this.phase = 'lobby';
     this.rpsChoices = {};
@@ -604,7 +637,7 @@ class GameRoom {
       code: this.code,
       phase: this.phase,
       teams: this.teams,
-      players: this.players.map(p => ({ id: p.id, name: p.name, team: p.team, location: p.location, alive: p.alive, connected: p.connected !== false, respawning: p.respawning, pickaxe: p.pickaxe, enderPearl: p.enderPearl, tnt: p.tnt })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, team: p.team, location: p.location, alive: p.alive, connected: p.connected !== false, respawning: p.respawning, pickaxe: p.pickaxe, enderPearl: p.enderPearl, tnt: p.tnt, shopPoints: p.shopPoints })),
       locations: this.locations,
       gridPos: this.gridPos,
       rpsRevealed: this.rpsRevealed,
@@ -751,6 +784,7 @@ io.on('connection', (socket) => {
       case 'destroyBed': ok = room.performDestroyBed(rec.playerId); break;
       case 'pass': ok = room.passAction(rec.playerId); break;
       case 'buy': ok = room.buy(rec.playerId, data.item); break;
+      case 'save': ok = room.save(rec.playerId); break;
       case 'breakDefense': ok = room.breakDefense(rec.playerId); break;
       case 'useTNT': ok = room.useTNT(rec.playerId); break;
       case 'useEnderPearl': ok = room.useEnderPearl(rec.playerId, data.target); break;
