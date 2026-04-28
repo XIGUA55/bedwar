@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>起床战争 BedWar</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; background: #12122a; color: #e0e0e0; min-height: 100vh; }
+#app { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+h1 { text-align: center; font-size: 28px; margin-bottom: 4px; color: #ff6b6b; text-shadow: 0 0 20px rgba(255,107,107,0.4); }
+.subtitle { text-align: center; color: #888; margin-bottom: 16px; font-size: 13px; }
+
+/* ===== SETUP SCREEN ===== */
+#setup { display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 40px; }
+.setup-card { background: #1e1e3a; border: 1px solid #333; border-radius: 12px; padding: 28px; text-align: center; }
+.setup-card h3 { margin-bottom: 16px; color: #ff6b6b; font-size: 18px; }
+.team-count-group { display: flex; gap: 12px; justify-content: center; }
+.team-count-btn { width: 56px; height: 56px; border-radius: 12px; border: 2px solid #444; background: #2a2a4a; color: #ccc; font-size: 20px; cursor: pointer; transition: all 0.2s; }
+.team-count-btn:hover { border-color: #ff6b6b; color: #ff6b6b; transform: scale(1.05); }
+.team-count-btn.selected { border-color: #ff6b6b; background: #3a1a2a; color: #ff6b6b; box-shadow: 0 0 12px rgba(255,107,107,0.3); }
+.start-btn { padding: 12px 48px; border-radius: 8px; border: none; background: linear-gradient(135deg, #ff6b6b, #ee5a5a); color: #fff; font-size: 18px; cursor: pointer; font-weight: bold; transition: all 0.2s; margin-top: 8px; }
+.start-btn:hover { transform: scale(1.05); box-shadow: 0 4px 20px rgba(255,107,107,0.4); }
+
+/* ===== GAME SCREEN ===== */
+#game { display: flex; gap: 16px; height: calc(100vh - 120px); min-height: 600px; }
+#board-container { flex: 1; position: relative; background: #1a1a35; border: 1px solid #333; border-radius: 12px; overflow: hidden; }
+#panel { width: 320px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+
+/* ===== MAP ===== */
+#map { position: relative; width: 100%; height: 100%; margin: 0; }
+.map-location { position: absolute; width: 80px; height: 80px; transform: translate(-50%, -50%); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; cursor: default; transition: all 0.2s; z-index: 2; }
+.map-location.main-island { width: 100px; height: 100px; border: 3px solid #ffd700; }
+.loc-tag { font-size: 10px; opacity: 0.8; margin-top: 2px; }
+.loc-players { display: flex; gap: 3px; margin-top: 4px; flex-wrap: wrap; justify-content: center; }
+.player-token { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); font-size: 10px; display: flex; align-items: center; justify-content: center; }
+.player-token.dead { opacity: 0.3; text-decoration: line-through; }
+.bed-icon { font-size: 20px; margin-bottom: 2px; }
+.bed-icon.destroyed { filter: grayscale(1); opacity: 0.4; }
+
+/* Connection lines via SVG overlay */
+#connections-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+#connections-svg line { stroke: #444; stroke-width: 2; stroke-dasharray: 6 3; }
+
+/* ===== PANEL SECTIONS ===== */
+.panel-section { background: #1e1e3a; border: 1px solid #333; border-radius: 10px; padding: 14px; }
+.panel-section h3 { font-size: 14px; color: #ff6b6b; margin-bottom: 10px; }
+.team-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: #252545; margin-bottom: 4px; }
+.team-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.team-name { font-size: 13px; font-weight: bold; }
+.team-status { font-size: 11px; opacity: 0.7; margin-left: auto; }
+.team-eliminated { opacity: 0.4; text-decoration: line-through; }
+
+/* RPS section */
+.rps-player-row { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; background: #252545; margin-bottom: 4px; }
+.rps-player-name { font-size: 13px; min-width: 50px; }
+.rps-pending { color: #ffd700; font-size: 11px; }
+.rps-ready { color: #2ecc71; font-size: 11px; }
+.rps-revealed { font-size: 18px; }
+.rps-buttons { display: flex; gap: 4px; margin-left: auto; }
+.rps-btn { width: 40px; height: 40px; border-radius: 8px; border: 2px solid #444; background: #2a2a4a; font-size: 18px; cursor: pointer; transition: all 0.15s; }
+.rps-btn:hover { border-color: #ffd700; transform: scale(1.1); }
+.rps-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.rps-btn.selected { border-color: #2ecc71; background: #1a3a2a; }
+
+/* Action section */
+.action-info { text-align: center; font-size: 14px; margin-bottom: 8px; color: #ffd700; }
+.action-buttons { display: flex; flex-direction: column; gap: 6px; }
+.action-btn { padding: 10px; border-radius: 8px; border: 2px solid #555; background: #2a2a4a; color: #e0e0e0; font-size: 13px; cursor: pointer; transition: all 0.15s; font-weight: bold; }
+.action-btn:hover:not(:disabled) { border-color: #ffd700; background: #3a3a5a; }
+.action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.action-btn.pass { border-color: #666; font-size: 12px; }
+
+/* Log */
+#log-section { max-height: 200px; overflow-y: auto; }
+.log-entry { padding: 4px 0; font-size: 11px; border-bottom: 1px solid #2a2a4a; }
+.log-entry.warn { color: #ff6b6b; }
+.log-entry.good { color: #2ecc71; }
+.log-entry.info { color: #ffd700; }
+
+/* ===== GAME OVER ===== */
+#gameover-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+#gameover-overlay.show { display: flex; }
+.gameover-card { background: #1e1e3a; border: 2px solid #ffd700; border-radius: 16px; padding: 40px; text-align: center; }
+.gameover-card h2 { color: #ffd700; font-size: 28px; margin-bottom: 12px; }
+.gameover-card p { font-size: 14px; opacity: 0.8; margin-bottom: 20px; }
+.gameover-card button { padding: 10px 32px; border-radius: 8px; border: none; background: #ff6b6b; color: #fff; font-size: 16px; cursor: pointer; font-weight: bold; }
+.gameover-card button:hover { box-shadow: 0 0 16px rgba(255,107,107,0.5); }
+
+/* highlight current location in action mode */
+.map-location.highlight { box-shadow: 0 0 16px rgba(255,215,0,0.6); }
+</style>
+</head>
+<body>
+<div id="app">
+<h1>⚔️ 起床战争 BedWar</h1>
+<p class="subtitle">石头剪刀布 → 赢得行动权 → 移动 / 砍人 / 挖床</p>
+
+<div id="setup">
+<div class="setup-card">
+<h3>选择队伍数量</h3>
+<div class="team-count-group">
+<button class="team-count-btn" data-count="2">2</button>
+<button class="team-count-btn" data-count="3">3</button>
+<button class="team-count-btn selected" data-count="4">4</button>
+</div>
+<p style="margin-top:12px;font-size:12px;color:#888;">每队 = 1 名玩家</p>
+</div>
+<button class="start-btn" id="btn-start">⚔️ 开始游戏</button>
+</div>
+
+<div id="game" style="display:none">
+<div id="board-container">
+<div id="map"></div>
+<svg id="connections-svg"></svg>
+</div>
+<div id="panel">
+<div class="panel-section" id="teams-status"></div>
+<div class="panel-section" id="rps-section"></div>
+<div class="panel-section" id="action-section"></div>
+<div class="panel-section" id="log-section"><h3>📜 战报</h3><div id="log-entries"></div></div>
+</div>
+</div>
+
+<div id="gameover-overlay"><div class="gameover-card"></div></div>
+</div>
+
+<script>
+"use strict";
+
+// ==================== CONSTANTS ====================
+const TEAM_DEFS = [
+  { id: 'red',    name: '红队', color: '#e74c3c', emoji: '🔴' },
+  { id: 'blue',   name: '蓝队', color: '#3498db', emoji: '🔵' },
+  { id: 'green',  name: '绿队', color: '#2ecc71', emoji: '🟢' },
+  { id: 'yellow', name: '黄队', color: '#f1c40f', emoji: '🟡' },
+];
+
+const RPS_CHOICES = ['rock', 'paper', 'scissors'];
+const RPS_EMOJI = { rock: '✊', paper: '✋', scissors: '✌️' };
+const RPS_LABEL = { rock: '石头', paper: '布', scissors: '剪刀' };
+const BEATS = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
+
+// ==================== MAP DEFINITION ====================
+function buildMap(teamDefs) {
+  const locations = {};
+  const connections = []; // pairs [locA, locB]
+  const gridPos = {};     // locationId -> {x%, y%}
+
+  locations['main'] = { id: 'main', name: '主岛', team: null, isBed: false, connections: [] };
+  gridPos['main'] = { x: 50, y: 50 };
+
+  const numTeams = teamDefs.length;
+
+  if (numTeams === 2) {
+    // Horizontal line: Blue(left) -- Main -- Red(right)
+    const teams = teamDefs;
+    // Blue on left
+    const t0_upper = teams[0].id + '_upper';
+    const t0_lower = teams[0].id + '_lower';
+    const t0_bridge = teams[0].id + '_bridge';
+    locations[t0_bridge] = { id: t0_bridge, name: teams[0].name + '桥', team: teams[0].id, isBed: false, connections: ['main', t0_lower] };
+    locations[t0_lower] = { id: t0_lower, name: '下层', team: teams[0].id, isBed: false, connections: [t0_bridge, t0_upper] };
+    locations[t0_upper] = { id: t0_upper, name: '床', team: teams[0].id, isBed: true, connections: [t0_lower] };
+    gridPos[t0_bridge] = { x: 38, y: 50 };
+    gridPos[t0_lower] = { x: 26, y: 50 };
+    gridPos[t0_upper] = { x: 14, y: 50 };
+    locations['main'].connections.push(t0_bridge);
+    // Red on right
+    const t1_upper = teams[1].id + '_upper';
+    const t1_lower = teams[1].id + '_lower';
+    const t1_bridge = teams[1].id + '_bridge';
+    locations[t1_bridge] = { id: t1_bridge, name: teams[1].name + '桥', team: teams[1].id, isBed: false, connections: ['main', t1_lower] };
+    locations[t1_lower] = { id: t1_lower, name: '下层', team: teams[1].id, isBed: false, connections: [t1_bridge, t1_upper] };
+    locations[t1_upper] = { id: t1_upper, name: '床', team: teams[1].id, isBed: true, connections: [t1_lower] };
+    gridPos[t1_bridge] = { x: 62, y: 50 };
+    gridPos[t1_lower] = { x: 74, y: 50 };
+    gridPos[t1_upper] = { x: 86, y: 50 };
+    locations['main'].connections.push(t1_bridge);
+  } else if (numTeams === 3) {
+    // T-shape: Blue(top), Red(right), Green(bottom), Main center
+    // Blue (top)
+    const t0_upper = teamDefs[0].id + '_upper';
+    const t0_lower = teamDefs[0].id + '_lower';
+    const t0_bridge = teamDefs[0].id + '_bridge';
+    locations[t0_bridge] = { id: t0_bridge, name: teamDefs[0].name + '桥', team: teamDefs[0].id, isBed: false, connections: ['main', t0_lower] };
+    locations[t0_lower] = { id: t0_lower, name: '下层', team: teamDefs[0].id, isBed: false, connections: [t0_bridge, t0_upper] };
+    locations[t0_upper] = { id: t0_upper, name: '床', team: teamDefs[0].id, isBed: true, connections: [t0_lower] };
+    gridPos[t0_bridge] = { x: 50, y: 38 };
+    gridPos[t0_lower] = { x: 50, y: 26 };
+    gridPos[t0_upper] = { x: 50, y: 14 };
+    locations['main'].connections.push(t0_bridge);
+    // Red (right)
+    const t1_upper = teamDefs[1].id + '_upper';
+    const t1_lower = teamDefs[1].id + '_lower';
+    const t1_bridge = teamDefs[1].id + '_bridge';
+    locations[t1_bridge] = { id: t1_bridge, name: teamDefs[1].name + '桥', team: teamDefs[1].id, isBed: false, connections: ['main', t1_lower] };
+    locations[t1_lower] = { id: t1_lower, name: '下层', team: teamDefs[1].id, isBed: false, connections: [t1_bridge, t1_upper] };
+    locations[t1_upper] = { id: t1_upper, name: '床', team: teamDefs[1].id, isBed: true, connections: [t1_lower] };
+    gridPos[t1_bridge] = { x: 62, y: 50 };
+    gridPos[t1_lower] = { x: 74, y: 50 };
+    gridPos[t1_upper] = { x: 86, y: 50 };
+    locations['main'].connections.push(t1_bridge);
+    // Green (bottom)
+    const t2_upper = teamDefs[2].id + '_upper';
+    const t2_lower = teamDefs[2].id + '_lower';
+    const t2_bridge = teamDefs[2].id + '_bridge';
+    locations[t2_bridge] = { id: t2_bridge, name: teamDefs[2].name + '桥', team: teamDefs[2].id, isBed: false, connections: ['main', t2_lower] };
+    locations[t2_lower] = { id: t2_lower, name: '下层', team: teamDefs[2].id, isBed: false, connections: [t2_bridge, t2_upper] };
+    locations[t2_upper] = { id: t2_upper, name: '床', team: teamDefs[2].id, isBed: true, connections: [t2_lower] };
+    gridPos[t2_bridge] = { x: 50, y: 62 };
+    gridPos[t2_lower] = { x: 50, y: 74 };
+    gridPos[t2_upper] = { x: 50, y: 86 };
+    locations['main'].connections.push(t2_bridge);
+  } else {
+    // 4 teams: Cross layout
+    // Blue (top)
+    const blue_upper = 'blue_upper', blue_lower = 'blue_lower', blue_bridge = 'blue_bridge';
+    locations[blue_bridge] = { id: blue_bridge, name: '蓝队桥', team: 'blue', isBed: false, connections: ['main', blue_lower] };
+    locations[blue_lower] = { id: blue_lower, name: '下层', team: 'blue', isBed: false, connections: [blue_bridge, blue_upper] };
+    locations[blue_upper] = { id: blue_upper, name: '床', team: 'blue', isBed: true, connections: [blue_lower] };
+    gridPos[blue_bridge] = { x: 50, y: 38 };
+    gridPos[blue_lower] = { x: 50, y: 26 };
+    gridPos[blue_upper] = { x: 50, y: 14 };
+    locations['main'].connections.push(blue_bridge);
+    // Red (right)
+    const red_upper = 'red_upper', red_lower = 'red_lower', red_bridge = 'red_bridge';
+    locations[red_bridge] = { id: red_bridge, name: '红队桥', team: 'red', isBed: false, connections: ['main', red_lower] };
+    locations[red_lower] = { id: red_lower, name: '下层', team: 'red', isBed: false, connections: [red_bridge, red_upper] };
+    locations[red_upper] = { id: red_upper, name: '床', team: 'red', isBed: true, connections: [red_lower] };
+    gridPos[red_bridge] = { x: 62, y: 50 };
+    gridPos[red_lower] = { x: 74, y: 50 };
+    gridPos[red_upper] = { x: 86, y: 50 };
+    locations['main'].connections.push(red_bridge);
+    // Green (bottom)
+    const green_upper = 'green_upper', green_lower = 'green_lower', green_bridge = 'green_bridge';
+    locations[green_bridge] = { id: green_bridge, name: '绿队桥', team: 'green', isBed: false, connections: ['main', green_lower] };
+    locations[green_lower] = { id: green_lower, name: '下层', team: 'green', isBed: false, connections: [green_bridge, green_upper] };
+    locations[green_upper] = { id: green_upper, name: '床', team: 'green', isBed: true, connections: [green_lower] };
+    gridPos[green_bridge] = { x: 50, y: 62 };
+    gridPos[green_lower] = { x: 50, y: 74 };
+    gridPos[green_upper] = { x: 50, y: 86 };
+    locations['main'].connections.push(green_bridge);
+    // Yellow (left)
+    const yellow_upper = 'yellow_upper', yellow_lower = 'yellow_lower', yellow_bridge = 'yellow_bridge';
+    locations[yellow_bridge] = { id: yellow_bridge, name: '黄队桥', team: 'yellow', isBed: false, connections: ['main', yellow_lower] };
+    locations[yellow_lower] = { id: yellow_lower, name: '下层', team: 'yellow', isBed: false, connections: [yellow_bridge, yellow_upper] };
+    locations[yellow_upper] = { id: yellow_upper, name: '床', team: 'yellow', isBed: true, connections: [yellow_lower] };
+    gridPos[yellow_bridge] = { x: 38, y: 50 };
+    gridPos[yellow_lower] = { x: 26, y: 50 };
+    gridPos[yellow_upper] = { x: 14, y: 50 };
+    locations['main'].connections.push(yellow_bridge);
+  }
+
+  return { locations, gridPos };
+}
+
+// ==================== GAME STATE ====================
+let G = {
+  phase: 'setup', // 'rps', 'reveal', 'action', 'gameover'
+  teams: [],
+  locations: {},
+  gridPos: {},
+  players: [],      // { id, name, team, location, alive }
+  rpsChoices: {},   // playerId -> rock/paper/scissors
+  rpsRevealed: false,
+  winners: [],      // playerIds of current round winners
+  loserCount: 0,
+  winnerActions: {},     // pid -> remaining actions for this winner
+  winnerOrder: [],       // ordered pids of winners (shuffled for tiebreak)
+  winnerIdx: 0,
+  logEntries: [],
+  winnerTeam: null,
+};
+
+function teamColor(teamId) {
+  const def = TEAM_DEFS.find(t => t.id === teamId);
+  return def ? def.color : '#888';
+}
+
+function teamName(teamId) {
+  const def = TEAM_DEFS.find(t => t.id === teamId);
+  return def ? def.name : teamId;
+}
+
+function teamEmoji(teamId) {
+  const def = TEAM_DEFS.find(t => t.id === teamId);
+  return def ? def.emoji : '⚪';
+}
+
+function findPlayer(pid) {
+  return G.players.find(p => p.id === pid);
+}
+
+function alivePlayers() {
+  return G.players.filter(p => p.alive);
+}
+
+function alivePlayersOfTeam(teamId) {
+  return G.players.filter(p => p.alive && p.team === teamId);
+}
+
+function teamHasBed(teamId) {
+  const team = G.teams.find(t => t.id === teamId);
+  return team ? team.bedAlive : false;
+}
+
+function teamEliminated(teamId) {
+  // Eliminated if bed destroyed AND all players dead
+  if (teamHasBed(teamId)) return false;
+  return alivePlayersOfTeam(teamId).length === 0;
+}
+
+function activeTeams() {
+  return G.teams.filter(t => !teamEliminated(t.id));
+}
+
+// ==================== GAME LOGIC ====================
+function initGame(numTeams) {
+  const teamDefs = TEAM_DEFS.slice(0, numTeams);
+  const { locations, gridPos } = buildMap(teamDefs);
+
+  G = {
+    phase: 'rps',
+    teams: teamDefs.map(t => ({ id: t.id, name: t.name, color: t.color, emoji: t.emoji, bedAlive: true })),
+    locations,
+    gridPos,
+    players: [],
+    rpsChoices: {},
+    rpsRevealed: false,
+    winners: [],
+    loserCount: 0,
+    winnerActions: {},     // pid -> remaining actions for this winner
+    winnerOrder: [],       // ordered pids of winners (shuffled)
+    winnerIdx: 0,          // current index in winnerOrder
+    logEntries: [],
+    winnerTeam: null,
+  };
+
+  // Create players, each starting at own lower base
+  let pid = 1;
+  for (const t of G.teams) {
+    const lowerLoc = t.id + '_lower';
+    G.players.push({
+      id: pid++,
+      name: t.emoji + ' ' + t.name + '战士',
+      team: t.id,
+      location: lowerLoc,
+      alive: true,
+    });
+  }
+
+  addLog(`🎮 游戏开始！${G.teams.length} 支队伍展开对决！`, 'info');
+}
+
+function addLog(msg, type = '') {
+  G.logEntries.unshift({ msg, type, time: Date.now() });
+  if (G.logEntries.length > 100) G.logEntries.length = 100;
+}
+
+function currentRoundDisplay() {
+  // Just for display purposes - find all alive players
+  return alivePlayers();
+}
+
+function submitRPS(playerId, choice) {
+  if (G.phase !== 'rps') return false;
+  if (G.rpsChoices[playerId] !== undefined) return false;
+  if (!findPlayer(playerId)?.alive) return false;
+
+  G.rpsChoices[playerId] = choice;
+
+  // Check if all alive players have chosen
+  const alive = alivePlayers();
+  if (alive.every(p => G.rpsChoices[p.id] !== undefined)) {
+    resolveRPS();
+  }
+  return true;
+}
+
+function resolveRPS() {
+  G.rpsRevealed = true;
+  G.phase = 'reveal';
+
+  const alive = alivePlayers();
+  const choices = G.rpsChoices;
+
+  for (const p of alive) {
+    const c = choices[p.id];
+    addLog(`${teamEmoji(p.team)} ${p.name} 出了 ${RPS_EMOJI[c]} ${RPS_LABEL[c]}`, '');
+  }
+
+  const scores = {};
+  for (const p of alive) scores[p.id] = 0;
+
+  for (let i = 0; i < alive.length; i++) {
+    for (let j = i + 1; j < alive.length; j++) {
+      const a = alive[i], b = alive[j];
+      const ca = choices[a.id], cb = choices[b.id];
+      if (ca === cb) continue;
+      if (BEATS[ca] === cb) scores[a.id]++;
+      else scores[b.id]++;
+    }
+  }
+
+  const maxScore = Math.max(...Object.values(scores));
+  const winners = alive.filter(p => scores[p.id] === maxScore);
+
+  // Draw: all scores equal (all same choice, or all three gestures present equally)
+  if (maxScore === 0 || winners.length === alive.length) {
+    addLog('🤝 本轮平局！无人获得行动权', 'warn');
+    G.winners = [];
+    G.loserCount = alive.length;
+    G.winnerActions = {};
+    G.winnerOrder = [];
+    G.winnerIdx = 0;
+    startNextRoundDelayed();
+    return;
+  }
+
+  const loserCount = alive.length - winners.length;
+
+  G.winners = winners.map(p => p.id);
+  G.loserCount = loserCount;
+  G.winnerActions = {};
+  G.winnerOrder = [...G.winners];
+
+  // Shuffle winner order as hidden tiebreaker
+  for (let i = G.winnerOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [G.winnerOrder[i], G.winnerOrder[j]] = [G.winnerOrder[j], G.winnerOrder[i]];
+  }
+
+  // Each winner gets loserCount actions individually
+  for (const pid of G.winnerOrder) {
+    G.winnerActions[pid] = Math.max(1, loserCount);
+  }
+  G.winnerIdx = 0;
+
+  const winnerNames = winners.map(p => p.name).join(', ');
+  const actionStr = winners.length > 1
+    ? `各获得 ${Math.max(1, loserCount)} 次行动`
+    : `共获得 ${Math.max(1, loserCount)} 次行动机会`;
+  addLog(`🏆 ${winnerNames} 获胜！${actionStr}`, 'good');
+
+  setTimeout(() => {
+    G.phase = 'action';
+    if (G.winnerOrder.length > 0) {
+      advanceToNextAliveWinner();
+    }
+    render();
+  }, 1500);
+}
+
+function advanceToNextAliveWinner() {
+  const original = G.winnerIdx;
+  for (let i = 0; i < G.winnerOrder.length; i++) {
+    const idx = (original + i) % G.winnerOrder.length;
+    const pid = G.winnerOrder[idx];
+    const p = findPlayer(pid);
+    if (p && p.alive) {
+      G.winnerIdx = idx;
+      return;
+    }
+  }
+  G.winnerOrder = [];
+  G.winnerActions = {};
+}
+
+function currentActor() {
+  if (G.phase !== 'action' || G.winnerOrder.length === 0) return null;
+  const pid = G.winnerOrder[G.winnerIdx];
+  return findPlayer(pid);
+}
+
+function getAvailableMoves(player) {
+  if (!player || !player.alive) return [];
+  const loc = G.locations[player.location];
+  if (!loc) return [];
+  return loc.connections.map(lid => G.locations[lid]).filter(Boolean);
+}
+
+function getEnemiesAt(locationId, playerTeam) {
+  return alivePlayers().filter(p => p.location === locationId && p.team !== playerTeam);
+}
+
+function performMove(targetLocId) {
+  const actor = currentActor();
+  if (!actor) return false;
+  if ((G.winnerActions[actor.id] || 0) <= 0) return false;
+  const available = getAvailableMoves(actor).map(l => l.id);
+  if (!available.includes(targetLocId)) return false;
+
+  const oldLoc = actor.location;
+  actor.location = targetLocId;
+  G.winnerActions[actor.id]--;
+  addLog(`🚶 ${teamEmoji(actor.team)} ${actor.name} 移动到 ${G.locations[targetLocId].name}`, '');
+
+  checkAndAdvanceAction();
+  return true;
+}
+
+function performKill(targetPlayerId) {
+  const actor = currentActor();
+  if (!actor) return false;
+  if ((G.winnerActions[actor.id] || 0) <= 0) return false;
+  const target = findPlayer(targetPlayerId);
+  if (!target || !target.alive || target.location !== actor.location || target.team === actor.team) return false;
+
+  target.alive = false;
+  G.winnerActions[actor.id]--;
+  addLog(`⚔️ ${teamEmoji(actor.team)} ${actor.name} 击杀了 ${teamEmoji(target.team)} ${target.name}！`, 'warn');
+
+  if (teamEliminated(target.team)) {
+    G.teams.find(t => t.id === target.team).bedAlive = false;
+    addLog(`💀 ${teamName(target.team)} 被淘汰！全员阵亡`, 'warn');
+  }
+
+  if (checkWinCondition()) return true;
+
+  checkAndAdvanceAction();
+  return true;
+}
+
+function performDestroyBed() {
+  const actor = currentActor();
+  if (!actor) return false;
+  if ((G.winnerActions[actor.id] || 0) <= 0) return false;
+  const loc = G.locations[actor.location];
+  if (!loc || !loc.isBed) return false;
+  if (loc.team === actor.team) return false;
+
+  const targetTeam = G.teams.find(t => t.id === loc.team);
+  if (!targetTeam || !targetTeam.bedAlive) return false;
+
+  targetTeam.bedAlive = false;
+  G.winnerActions[actor.id]--;
+  addLog(`🛏️ ${teamEmoji(actor.team)} ${actor.name} 摧毁了 ${teamName(targetTeam.id)} 的床！`, 'warn');
+
+  if (teamEliminated(targetTeam.id)) {
+    addLog(`💀 ${teamName(targetTeam.id)} 被淘汰！床已摧毁，全员阵亡`, 'warn');
+  }
+
+  if (checkWinCondition()) return true;
+
+  checkAndAdvanceAction();
+  return true;
+}
+
+function passAction() {
+  const actor = currentActor();
+  if (!actor) return;
+  const remaining = G.winnerActions[actor.id] || 0;
+  G.winnerActions[actor.id] = 0;
+  addLog(`⏭️ ${teamEmoji(actor.team)} ${actor.name} 放弃了剩余的 ${remaining} 次行动`, '');
+  checkAndAdvanceAction(true);
+}
+
+function checkAndAdvanceAction(forceNext = false) {
+  if (G.winnerTeam !== null) return;
+
+  const currentPid = G.winnerOrder.length > 0 ? G.winnerOrder[G.winnerIdx] : null;
+  const remaining = currentPid ? (G.winnerActions[currentPid] || 0) : 0;
+
+  if (remaining <= 0 || forceNext) {
+    G.winnerIdx++;
+    if (G.winnerIdx >= G.winnerOrder.length) {
+      startNextRound();
+      return;
+    }
+    advanceToNextAliveWinner();
+    const next = currentActor();
+    if (!next || (G.winnerActions[next.id] || 0) <= 0) {
+      startNextRound();
+      return;
+    }
+  }
+
+  render();
+}
+
+function checkWinCondition() {
+  const active = activeTeams();
+  if (active.length <= 1) {
+    if (active.length === 1) {
+      const winner = active[0];
+      G.winnerTeam = winner.id;
+      G.phase = 'gameover';
+      addLog(`🎉 ${teamName(winner.id)} 获得最终胜利！🏆`, 'good');
+    } else {
+      G.winnerTeam = null;
+      G.phase = 'gameover';
+      addLog('💀 所有队伍全军覆没！', 'warn');
+    }
+    render();
+    return true;
+  }
+  return false;
+}
+
+function startNextRound() {
+  // Respawn dead players whose beds are intact
+  for (const p of G.players) {
+    if (!p.alive && teamHasBed(p.team)) {
+      const lowerLoc = p.team + '_lower';
+      p.alive = true;
+      p.location = lowerLoc;
+      addLog(`🔄 ${teamEmoji(p.team)} ${p.name} 在 ${G.locations[lowerLoc].name} 复活！`, 'good');
+    }
+  }
+
+  // Check win condition again after respawn
+  if (checkWinCondition()) return;
+
+  // Reset round state
+  G.rpsChoices = {};
+  G.rpsRevealed = false;
+  G.winners = [];
+  G.loserCount = 0;
+  G.winnerActions = {};
+  G.winnerOrder = [];
+  G.winnerIdx = 0;
+  G.phase = 'rps';
+
+  render();
+}
+
+function startNextRoundDelayed() {
+  setTimeout(() => startNextRound(), 1500);
+}
+
+// ==================== RENDERING ====================
+function render() {
+  if (G.phase === 'setup') {
+    document.getElementById('setup').style.display = 'flex';
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('gameover-overlay').classList.remove('show');
+    return;
+  }
+
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('game').style.display = 'flex';
+
+  renderMap();
+  renderTeamsStatus();
+  renderRPSSection();
+  renderActionSection();
+  renderLog();
+  renderGameOver();
+}
+
+function renderMap() {
+  const mapEl = document.getElementById('map');
+  const svgEl = document.getElementById('connections-svg');
+  mapEl.innerHTML = '';
+
+  // Draw connections as SVG lines
+  let svgContent = '';
+  const drawnPairs = new Set();
+  const rect = document.getElementById('board-container').getBoundingClientRect();
+  const w = rect.width || 800;
+  const h = rect.height || 600;
+
+  for (const [locId, loc] of Object.entries(G.locations)) {
+    const pos = G.gridPos[locId];
+    if (!pos) continue;
+    for (const connId of loc.connections) {
+      const pairKey = [locId, connId].sort().join('-');
+      if (drawnPairs.has(pairKey)) continue;
+      drawnPairs.add(pairKey);
+      const connPos = G.gridPos[connId];
+      if (!connPos) continue;
+      const x1 = (pos.x / 100) * w;
+      const y1 = (pos.y / 100) * h;
+      const x2 = (connPos.x / 100) * w;
+      const y2 = (connPos.y / 100) * h;
+      svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+    }
+  }
+  svgEl.innerHTML = svgContent;
+
+  // Draw locations
+  for (const [locId, loc] of Object.entries(G.locations)) {
+    const pos = G.gridPos[locId];
+    if (!pos) continue;
+
+    const div = document.createElement('div');
+    div.className = 'map-location';
+    if (locId === 'main') div.classList.add('main-island');
+    div.style.left = pos.x + '%';
+    div.style.top = pos.y + '%';
+
+    // Team color background
+    if (loc.team) {
+      const tColor = teamColor(loc.team);
+      div.style.background = `rgba(${hexToRgb(tColor)},0.2)`;
+      div.style.border = `2px solid ${tColor}`;
+    } else {
+      div.style.background = '#2a2a4a';
+      div.style.border = locId === 'main' ? '3px solid #ffd700' : '2px solid #555';
+    }
+
+    // Highlight if current actor is here
+    const actor = currentActor();
+    if (actor && actor.location === locId) {
+      div.classList.add('highlight');
+    }
+
+    // Content
+    let html = '';
+    if (loc.isBed) {
+      const t = G.teams.find(t => t.id === loc.team);
+      const bedAlive = t ? t.bedAlive : false;
+      html += `<span class="bed-icon${bedAlive ? '' : ' destroyed'}">${bedAlive ? '🛏️' : '💀'}</span>`;
+    }
+    html += `<span>${loc.name}</span>`;
+
+    // Players at this location
+    const playersHere = alivePlayers().filter(p => p.location === locId);
+    if (playersHere.length > 0) {
+      html += '<div class="loc-players">';
+      for (const p of playersHere) {
+        html += `<span class="player-token" style="background:${teamColor(p.team)}" title="${p.name}">${teamEmoji(p.team)}</span>`;
+      }
+      html += '</div>';
+    }
+
+    // Dead players at location just for reference
+    const deadHere = G.players.filter(p => !p.alive && p.location === locId);
+    if (deadHere.length > 0 && playersHere.length === 0) {
+      html += '<div class="loc-players">';
+      for (const p of deadHere) {
+        html += `<span class="player-token dead" style="background:${teamColor(p.team)}" title="${p.name} (阵亡)">💀</span>`;
+      }
+      html += '</div>';
+    }
+
+    div.innerHTML = html;
+    mapEl.appendChild(div);
+  }
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `${r},${g},${b}`;
+}
+
+function renderTeamsStatus() {
+  const el = document.getElementById('teams-status');
+  let html = '<h3>🏴 队伍状态</h3>';
+  for (const t of G.teams) {
+    const eliminated = teamEliminated(t.id);
+    const alive = alivePlayersOfTeam(t.id).length;
+    const cls = eliminated ? ' team-eliminated' : '';
+    html += `<div class="team-row${cls}">`;
+    html += `<span class="team-color" style="background:${t.color}"></span>`;
+    html += `<span class="team-name">${t.emoji} ${t.name}</span>`;
+    html += `<span class="team-status">🛏️${t.bedAlive ? '床完好' : '床已毁'} · 👤${alive}人</span>`;
+    html += `</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderRPSSection() {
+  const el = document.getElementById('rps-section');
+  if (G.phase !== 'rps' && G.phase !== 'reveal') {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+
+  let html = '<h3>✊ 石头剪刀布</h3>';
+
+  if (G.phase === 'reveal') {
+    html += '<p style="text-align:center;color:#ffd700;margin-bottom:8px;">📢 已揭晓结果</p>';
+    const alive = alivePlayers();
+    for (const p of alive) {
+      const c = G.rpsChoices[p.id];
+      html += `<div class="rps-player-row" style="border-left:3px solid ${teamColor(p.team)}">`;
+      html += `<span class="rps-player-name">${p.name}</span>`;
+      html += `<span class="rps-revealed">${RPS_EMOJI[c]} ${RPS_LABEL[c]}</span>`;
+      html += `</div>`;
+    }
+
+    if (G.winners.length === 0) {
+      html += '<p style="text-align:center;color:#ffd700;">🤝 平局！开始下一轮...</p>';
+    } else {
+      const perWinner = Math.max(1, G.loserCount);
+      const winnerNames = G.winners.map(pid => findPlayer(pid)?.name || '').join(', ');
+      html += `<p style="text-align:center;color:#2ecc71;margin-top:6px;">🏆 ${winnerNames}<br>各获得 ${perWinner} 次行动</p>`;
+    }
+  } else {
+    // rps phase
+    const alive = alivePlayers();
+    for (const p of alive) {
+      const chosen = G.rpsChoices[p.id] !== undefined;
+      html += `<div class="rps-player-row" style="border-left:3px solid ${teamColor(p.team)}">`;
+      html += `<span class="rps-player-name">${p.name}</span>`;
+      if (chosen) {
+        html += `<span class="rps-ready">✅ 已选择</span>`;
+      } else {
+        html += `<span class="rps-pending">⏳ 等待选择...</span>`;
+        html += `<div class="rps-buttons">`;
+        for (const c of RPS_CHOICES) {
+          html += `<button class="rps-btn" onclick="submitRPS(${p.id},'${c}');render();" title="${RPS_LABEL[c]}">${RPS_EMOJI[c]}</button>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  el.innerHTML = html;
+}
+
+function renderActionSection() {
+  const el = document.getElementById('action-section');
+  if (G.phase !== 'action') {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+
+  const actor = currentActor();
+  if (!actor) {
+    el.innerHTML = '<h3>⚡ 行动阶段</h3><p style="text-align:center;color:#ffd700;">行动结束，即将进入下一轮...</p>';
+    return;
+  }
+
+  let html = '<h3>⚡ 行动阶段</h3>';
+  html += `<div class="action-info">${teamEmoji(actor.team)} ${actor.name} 行动中<br>剩余行动次数: <b>${G.winnerActions[actor.id] || 0}</b></div>`;
+
+  html += '<div class="action-buttons">';
+
+  // Move actions
+  const moves = getAvailableMoves(actor);
+  for (const m of moves) {
+    html += `<button class="action-btn" onclick="performMove('${m.id}');render();">🚶 移动到 ${m.name}</button>`;
+  }
+
+  // Kill action
+  const enemies = getEnemiesAt(actor.location, actor.team);
+  for (const e of enemies) {
+    html += `<button class="action-btn" style="border-color:#e74c3c;" onclick="performKill(${e.id});render();">⚔️ 击杀 ${teamEmoji(e.team)} ${e.name}</button>`;
+  }
+
+  // Destroy bed action
+  const loc = G.locations[actor.location];
+  if (loc && loc.isBed && loc.team !== actor.team) {
+    const t = G.teams.find(t => t.id === loc.team);
+    if (t && t.bedAlive) {
+      html += `<button class="action-btn" style="border-color:#f39c12;" onclick="performDestroyBed();render();">🛏️ 摧毁 ${teamName(loc.team)} 的床</button>`;
+    }
+  }
+
+  // Pass
+  html += `<button class="action-btn pass" onclick="passAction();render();">⏭️ 跳过 / 结束行动 (剩余${G.winnerActions[actor.id] || 0}次)</button>`;
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderLog() {
+  const el = document.getElementById('log-entries');
+  let html = '';
+  const recent = G.logEntries.slice(0, 20);
+  for (const entry of recent) {
+    html += `<div class="log-entry ${entry.type}">${entry.msg}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderGameOver() {
+  const overlay = document.getElementById('gameover-overlay');
+  const card = overlay.querySelector('.gameover-card');
+
+  if (G.phase === 'gameover') {
+    overlay.classList.add('show');
+    if (G.winnerTeam) {
+      const t = G.teams.find(t => t.id === G.winnerTeam);
+      card.innerHTML = `
+        <h2>${t.emoji} ${t.name} 获胜！🎉</h2>
+        <p>经历了一场激烈的起床战争！</p>
+        <button onclick="location.reload()">🔄 再来一局</button>
+      `;
+    } else {
+      card.innerHTML = `
+        <h2>💀 全军覆没</h2>
+        <p>没有队伍幸存...</p>
+        <button onclick="location.reload()">🔄 再来一局</button>
+      `;
+    }
+  } else {
+    overlay.classList.remove('show');
+  }
+}
+
+// ==================== SETUP ====================
+let selectedTeamCount = 4;
+
+document.querySelectorAll('.team-count-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.team-count-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedTeamCount = parseInt(btn.dataset.count);
+  });
+});
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  initGame(selectedTeamCount);
+  render();
+});
+
+// ==================== RESIZE HANDLER ====================
+window.addEventListener('resize', () => {
+  if (G.phase !== 'setup') renderMap();
+});
+
+// ==================== INITIAL RENDER ====================
+render();
+</script>
+</body>
+</html>

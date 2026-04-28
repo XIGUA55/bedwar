@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>起床战争 BedWar 联机版</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; background: #12122a; color: #e0e0e0; min-height: 100vh; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+#app { max-width: 1100px; margin: 0 auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; height: 100vh; }
+
+h1 { text-align: center; font-size: 24px; color: #ff6b6b; text-shadow: 0 0 20px rgba(255,107,107,0.4); margin: 0; }
+#conn-status { text-align: center; font-size: 11px; color: #666; }
+#conn-status .online { color: #2ecc71; }
+#conn-status .offline { color: #e74c3c; }
+
+/* ===== LOBBY ===== */
+#lobby { display: flex; gap: 20px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
+.lobby-card { background: #1e1e3a; border: 1px solid #333; border-radius: 12px; padding: 24px; min-width: 280px; }
+.lobby-card h3 { color: #ff6b6b; margin-bottom: 12px; font-size: 16px; }
+.lobby-card label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+.lobby-card select, .lobby-card input { width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #444; background: #2a2a4a; color: #ccc; font-size: 14px; margin-bottom: 12px; outline: none; }
+.lobby-card input:focus, .lobby-card select:focus { border-color: #ff6b6b; }
+.lobby-card button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: linear-gradient(135deg, #ff6b6b, #ee5a5a); color: #fff; font-size: 16px; cursor: pointer; font-weight: bold; }
+.lobby-card button:hover { opacity: 0.9; }
+.warning { color: #ff6b6b; font-size: 11px; margin-bottom: 8px; min-height: 16px; }
+
+/* ===== IN-ROOM LOBBY ===== */
+#room-lobby { text-align: center; }
+#room-lobby .room-code { font-size: 36px; letter-spacing: 6px; color: #ffd700; font-weight: bold; margin: 12px 0; }
+.team-slot { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px; background: #252545; margin: 6px auto; max-width: 320px; justify-content: space-between; }
+.team-slot .dot { width: 14px; height: 14px; border-radius: 3px; }
+.team-slot .status { font-size: 12px; }
+.team-slot .taken { color: #2ecc71; }
+.team-slot .waiting { color: #888; }
+
+/* ===== GAME SCREEN ===== */
+#game { display: flex; gap: 12px; flex: 1; min-height: 350px; overflow: hidden; }
+#board-container { flex: 1; position: relative; background: #1a1a35; border: 1px solid #333; border-radius: 12px; overflow: hidden; min-width: 0; }
+#panel { width: 290px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex-shrink: 0; }
+
+/* MAP */
+#map { position: relative; width: 100%; height: 100%; }
+.map-loc { position: absolute; transform: translate(-50%, -50%); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; z-index: 2; width: 72px; height: 72px; }
+.map-loc.main-island { width: 90px; height: 90px; border: 3px solid #ffd700 !important; }
+.map-loc.highlight { box-shadow: 0 0 16px rgba(255,215,0,0.7) !important; }
+.loc-players { display: flex; gap: 2px; margin-top: 3px; flex-wrap: wrap; justify-content: center; }
+.p-token { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); font-size: 9px; display: flex; align-items: center; justify-content: center; }
+.p-token.dead { opacity: 0.3; }
+.bed-icon { font-size: 18px; margin-bottom: 2px; }
+.bed-icon.destroyed { filter: grayscale(1); opacity: 0.4; }
+
+#conn-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+#conn-svg line { stroke: #444; stroke-width: 2; stroke-dasharray: 6 3; }
+
+/* PANEL */
+.p-section { background: #1e1e3a; border: 1px solid #333; border-radius: 10px; padding: 12px; }
+.p-section h3 { font-size: 13px; color: #ff6b6b; margin-bottom: 8px; }
+.team-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; background: #252545; margin-bottom: 3px; font-size: 12px; }
+.team-row .tcolor { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.team-row .tstatus { font-size: 11px; opacity: 0.7; margin-left: auto; }
+.team-row.eliminated { opacity: 0.4; text-decoration: line-through; }
+
+.rps-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; background: #252545; margin-bottom: 3px; font-size: 12px; }
+.rps-status-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; background: #252545; margin-bottom: 3px; font-size: 13px; }
+.rps-status-row .choice-em { font-size: 18px; margin-left: auto; }
+.pending { color: #ffd700; font-size: 11px; }
+.ready { color: #2ecc71; font-size: 11px; }
+
+/* Large RPS choice buttons */
+.rps-big-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 14px 16px; margin-bottom: 6px; border-radius: 10px; border: 3px solid #444; background: #2a2a4a; color: #e0e0e0; font-size: 18px; cursor: pointer; transition: all 0.15s; font-weight: bold; min-height: 56px; }
+.rps-big-btn:hover:not(:disabled) { border-color: #ffd700; background: #3a3a5a; transform: scale(1.03); }
+.rps-big-btn:active:not(:disabled) { transform: scale(0.97); }
+.rps-big-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.rps-big-btn .emoji-big { font-size: 28px; }
+.rps-big-btn .label-big { font-size: 16px; }
+.rps-big-btn.selected { border-color: #2ecc71; background: #1a3a2a; box-shadow: 0 0 12px rgba(46,204,113,0.3); }
+
+/* Revealed result */
+.rps-reveal-row { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; background: #252545; margin-bottom: 3px; font-size: 14px; }
+.rps-reveal-row .emoji-lg { font-size: 24px; margin-left: auto; }
+
+.action-info { text-align: center; font-size: 13px; margin-bottom: 6px; color: #ffd700; }
+.action-btn { display: block; width: 100%; padding: 9px; margin-bottom: 4px; border-radius: 7px; border: 2px solid #555; background: #2a2a4a; color: #e0e0e0; font-size: 12px; cursor: pointer; transition: all 0.15s; font-weight: bold; text-align: left; }
+.action-btn:hover:not(:disabled) { border-color: #ffd700; background: #3a3a5a; }
+.action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.action-btn.pass { border-color: #555; font-size: 11px; text-align: center; }
+
+#log-box { max-height: 180px; overflow-y: auto; }
+#log-box .le { padding: 3px 0; font-size: 11px; border-bottom: 1px solid #2a2a4a; }
+.le.warn { color: #ff6b6b; }
+.le.good { color: #2ecc71; }
+.le.info { color: #ffd700; }
+
+#gameover-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 100; justify-content: center; align-items: center; }
+#gameover-overlay.show { display: flex; }
+.go-card { background: #1e1e3a; border: 2px solid #ffd700; border-radius: 16px; padding: 36px; text-align: center; }
+.go-card h2 { color: #ffd700; font-size: 26px; margin-bottom: 10px; }
+.go-card button { padding: 10px 28px; border-radius: 8px; border: none; background: #ff6b6b; color: #fff; font-size: 15px; cursor: pointer; font-weight: bold; margin: 6px; }
+.go-card button:hover { box-shadow: 0 0 14px rgba(255,107,107,0.5); }
+
+#board-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10; pointer-events: none; }
+#board-overlay .msg { font-size: 20px; color: #ffd700; text-shadow: 0 0 12px rgba(255,215,0,0.6); }
+
+/* ===== CHAT ===== */
+#chat-panel { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; margin: 0 auto; max-width: 1100px; background: #1a1a40; border: 1px solid #555; border-bottom: none; border-radius: 10px 10px 0 0; overflow: hidden; }
+#chat-panel h3 { font-size: 12px; color: #ff6b6b; padding: 6px 10px; border-bottom: 1px solid #444; margin: 0; background: #222248; cursor: pointer; user-select: none; }
+#chat-placeholder { padding: 10px; text-align: center; color: #666; font-size: 11px; }
+#chat-msgs { height: 140px; overflow-y: auto; padding: 6px 10px; background: #1a1a40; }
+.chat-msg { padding: 2px 0; font-size: 12px; word-break: break-word; }
+.chat-msg .cteam { margin-right: 2px; }
+.chat-msg .csender { font-weight: bold; margin-right: 4px; }
+.chat-msg .ctext { color: #ccc; }
+.chat-msg .ctime { font-size: 10px; color: #555; margin-right: 4px; }
+#chat-input { flex: 1; padding: 10px 10px; border: none; background: #252550; color: #e0e0e0; font-size: 14px; outline: none; font-family: inherit; }
+.chat-input-row { display: flex; }
+#chat-input::placeholder { color: #555; }
+.chat-send-btn { padding: 10px 16px; border: none; background: #ff6b6b; color: #fff; font-size: 14px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+.chat-send-btn:hover { background: #ee5a5a; }
+/* when chat is shown, add bottom padding to app so game content isn't hidden */
+#app { padding-bottom: 0; }
+body.chat-open #app { padding-bottom: 180px; }
+
+/* ===== MOBILE / TABLET ===== */
+@media (max-width: 840px) {
+  body { min-height: 100dvh; }
+  #app { padding: 4px 6px; height: 100dvh; gap: 3px; }
+  h1 { font-size: 17px; }
+
+  /* Lobby */
+  #lobby { flex-direction: column; gap: 10px; margin-top: 10px; }
+  .lobby-card { min-width: 0; padding: 16px; }
+  #room-lobby .room-code { font-size: 28px; letter-spacing: 4px; margin: 8px 0; }
+  .team-slot { max-width: 100%; padding: 8px 12px; }
+
+  /* Game: vertical stack */
+  #game { flex-direction: column; gap: 4px; overflow: auto; }
+  #board-container { flex: 0 0 auto; width: 100%; height: 50vw; max-height: 52vh; min-height: 260px; border-radius: 8px; }
+  #conn-svg line { stroke-width: 1.5px; }
+  #panel { width: 100%; flex: 1; overflow-y: auto; min-height: 0; gap: 4px; }
+
+  /* Map: scale down locations */
+  .map-loc { width: clamp(46px, 12vw, 66px); height: clamp(46px, 12vw, 66px); font-size: 10px; border-radius: 8px; }
+  .map-loc.main-island { width: clamp(58px, 15vw, 80px); height: clamp(58px, 15vw, 80px); }
+  .p-token { width: 14px; height: 14px; font-size: 8px; }
+  .bed-icon { font-size: 16px; }
+
+  /* Panel sections: compact */
+  .p-section { padding: 8px; border-radius: 8px; }
+  .p-section h3 { font-size: 12px; margin-bottom: 4px; }
+  .team-row { font-size: 11px; padding: 4px 6px; }
+
+  /* RPS buttons: larger touch targets */
+  .rps-big-btn { padding: 16px 14px; font-size: 20px; min-height: 60px; }
+  .rps-big-btn .emoji-big { font-size: 32px; }
+  .rps-big-btn .label-big { font-size: 17px; }
+  .rps-status-row { font-size: 14px; padding: 8px; }
+  .rps-status-row .choice-em { font-size: 22px; }
+
+  /* Action buttons: larger */
+  .action-btn { padding: 11px 10px; font-size: 13px; margin-bottom: 3px; min-height: 42px; }
+  .action-btn:active { transform: scale(0.98); }
+  .action-btn.pass { font-size: 12px; min-height: 38px; }
+
+  /* Log: shorter */
+  #log-box { max-height: 120px; }
+
+  /* Chat: compact */
+  #chat-panel { border-radius: 8px 8px 0 0; }
+  #chat-panel h3 { font-size: 11px; padding: 4px 8px; }
+  #chat-msgs { height: 100px; }
+  #chat-input { font-size: 15px; padding: 10px 8px; }
+  .chat-send-btn { padding: 10px 14px; font-size: 14px; }
+  body.chat-open #app { padding-bottom: 160px; }
+
+  /* Gameover */
+  .go-card { padding: 24px; margin: 16px; max-width: 90vw; }
+  .go-card h2 { font-size: 22px; }
+
+  /* Button general touch size */
+  .lobby-card button { min-height: 44px; }
+  .lobby-card select, .lobby-card input { min-height: 42px; }
+}
+
+/* ===== SMALL PHONES ===== */
+@media (max-width: 480px) {
+  #board-container { height: 48vw; max-height: 46vh; min-height: 230px; }
+  .map-loc { width: clamp(38px, 13vw, 56px); height: clamp(38px, 13vw, 56px); font-size: 9px; border-radius: 6px; }
+  .map-loc.main-island { width: clamp(48px, 16vw, 68px); height: clamp(48px, 16vw, 68px); }
+  .p-token { width: 12px; height: 12px; font-size: 7px; }
+  .bed-icon { font-size: 14px; }
+
+  h1 { font-size: 15px; }
+  .lobby-card { padding: 12px; }
+  .lobby-card h3 { font-size: 14px; }
+
+  #room-lobby .room-code { font-size: 24px; }
+
+  .rps-big-btn { padding: 12px 10px; font-size: 17px; min-height: 50px; }
+  .rps-big-btn .emoji-big { font-size: 26px; }
+  .rps-big-btn .label-big { font-size: 15px; }
+  .rps-status-row { font-size: 12px; }
+
+  #chat-msgs { height: 80px; }
+  #chat-input { font-size: 14px; }
+  .chat-msg { font-size: 11px; }
+  body.chat-open #app { padding-bottom: 140px; }
+
+  #log-box { max-height: 100px; }
+  .go-card h2 { font-size: 20px; }
+}
+
+/* ===== TOAST ===== */
+#toasts { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.toast { padding: 10px 22px; border-radius: 10px; font-size: 15px; font-weight: bold; animation: toastIn 0.35s ease; max-width: 92vw; text-align: center; pointer-events: auto; white-space: nowrap; }
+.toast.warn { background: rgba(200,60,40,0.92); color: #fff; }
+.toast.good { background: rgba(30,160,60,0.92); color: #fff; }
+.toast.info { background: rgba(40,120,220,0.92); color: #fff; }
+@keyframes toastIn { from { transform: translateY(-40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-20px); } }
+</style>
+</head>
+<body>
+<div id="app">
+<h1>⚔️ 起床战争 BedWar 联机版</h1>
+<div id="conn-status"><span id="conn-dot">●</span> <span id="conn-text">连接中...</span></div>
+<div id="toasts"></div>
+
+<div id="lobby">
+<div class="lobby-card">
+<h3>🎮 创建房间</h3>
+<label>昵称</label>
+<input type="text" id="create-name" maxlength="16" placeholder="你的昵称" autocomplete="off" value="">
+<label>队伍数量</label>
+<select id="team-count"><option value="2">2 队</option><option value="3">3 队</option><option value="4" selected>4 队</option></select>
+<button onclick="createRoom()">创建房间</button>
+<p class="warning" id="create-err"></p>
+</div>
+<div class="lobby-card">
+<h3>🔗 加入房间</h3>
+<label>昵称</label>
+<input type="text" id="join-name" maxlength="16" placeholder="你的昵称" autocomplete="off" value="">
+<label>房间码</label>
+<input type="text" id="join-code" maxlength="4" placeholder="输入4位房间码" autocomplete="off">
+<button onclick="joinRoom()">加入房间</button>
+<p class="warning" id="join-err"></p>
+</div>
+</div>
+
+<div id="room-lobby" style="display:none">
+<div class="lobby-card">
+<h3>等待玩家加入...</h3>
+<div style="margin-bottom:10px;color:#888;font-size:12px;">房间码</div>
+<div class="room-code" id="room-code-display"></div>
+<div id="team-slots"></div>
+<div id="my-stats"></div>
+<button id="btn-start-game" style="margin-top:14px;width:auto;padding:10px 40px;" onclick="startGame()" disabled>⚔️ 开始游戏</button>
+<p class="warning" id="start-err"></p>
+</div>
+</div>
+
+<div id="game" style="display:none">
+<div id="board-container">
+<div id="map"></div>
+<svg id="conn-svg"></svg>
+<div id="board-overlay"></div>
+</div>
+<div id="panel">
+<div class="p-section" id="teams-status"></div>
+<div class="p-section" id="rps-section"></div>
+<div class="p-section" id="action-section"></div>
+<div class="p-section" id="log-box"><h3>📜 战报</h3><div id="log-entries"></div></div>
+</div>
+</div>
+
+<div id="chat-panel">
+  <h3>💬 聊天</h3>
+  <div id="chat-msgs"><div id="chat-placeholder">暂无消息，输入内容开始聊天...</div></div>
+  <div class="chat-input-row">
+    <input type="text" id="chat-input" maxlength="200" placeholder="发送消息... 支持 emoji 😄" autocomplete="off">
+    <button class="chat-send-btn" onclick="sendChat()">发送</button>
+  </div>
+</div>
+
+<div id="gameover-overlay"><div class="go-card" id="go-content"></div></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+"use strict";
+
+const RPS = ['rock','paper','scissors'];
+const RPS_EMOJI = { rock:'✊', paper:'✋', scissors:'✌️' };
+const RPS_LABEL = { rock:'石头', paper:'布', scissors:'剪刀' };
+
+let socket;
+let state = null;      // latest server state
+let myPlayerId = null;
+let myCode = null;
+let prevState = null;
+
+// ==================== SOUND EFFECTS ====================
+const Sfx = {
+  ctx: null,
+  init() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  play(type) {
+    try {
+      this.init();
+      const t = this.ctx.currentTime;
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.connect(g); g.connect(this.ctx.destination);
+
+      switch (type) {
+        case 'tap':
+          o.type = 'sine'; o.frequency.value = 660;
+          g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+          o.start(t); o.stop(t + 0.08);
+          break;
+        case 'kill':
+          o.type = 'sawtooth'; o.frequency.setValueAtTime(300, t);
+          o.frequency.linearRampToValueAtTime(60, t + 0.2);
+          g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          o.start(t); o.stop(t + 0.25);
+          break;
+        case 'destroy':
+          o.type = 'square'; o.frequency.setValueAtTime(200, t);
+          o.frequency.linearRampToValueAtTime(40, t + 0.4);
+          g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+          o.start(t); o.stop(t + 0.45);
+          break;
+        case 'win':
+          const notes = [523, 659, 784, 1047];
+          notes.forEach((f, i) => {
+            const n = this.ctx.createOscillator();
+            const ng = this.ctx.createGain();
+            n.connect(ng); ng.connect(this.ctx.destination);
+            n.type = 'sine'; n.frequency.value = f;
+            ng.gain.setValueAtTime(0.15, t + i * 0.12);
+            ng.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.3);
+            n.start(t + i * 0.12); n.stop(t + i * 0.12 + 0.3);
+          });
+          break;
+        case 'reveal':
+          o.type = 'triangle'; o.frequency.setValueAtTime(440, t);
+          o.frequency.linearRampToValueAtTime(880, t + 0.1);
+          g.gain.setValueAtTime(0.15, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+          o.start(t); o.stop(t + 0.15);
+          break;
+        case 'round':
+          o.type = 'sine'; o.frequency.value = 800;
+          g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+          o.start(t); o.stop(t + 0.12);
+          setTimeout(() => { this.play('round2'); }, 120);
+          break;
+        case 'round2':
+          o.type = 'sine'; o.frequency.value = 1000;
+          g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+          o.start(t); o.stop(t + 0.12);
+          break;
+        case 'move':
+          o.type = 'sine'; o.frequency.value = 440;
+          g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+          o.start(t); o.stop(t + 0.06);
+          break;
+      }
+    } catch (e) { /* ignore audio errors */ }
+  }
+};
+
+// ==================== TOAST SYSTEM ====================
+function showToast(msg, type) {
+  if (document.getElementById('toasts').children.length > 5) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'info');
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'toastOut 0.3s ease forwards';
+    setTimeout(() => el.remove(), 300);
+  }, 2800);
+}
+
+function processEvents(events) {
+  if (!events || !events.length) return;
+  for (const e of events) {
+    switch (e.type) {
+      case 'kill':
+        showToast(`⚔️ ${teamEmoji(e.killerTeam)} ${e.killerName} 击杀了 ${teamEmoji(e.targetTeam)} ${e.targetName}`, 'warn');
+        Sfx.play('kill');
+        break;
+      case 'bedDestroy':
+        showToast(`🛏️ ${teamEmoji(e.killerTeam)} ${e.killerName} 摧毁了 ${teamEmoji(e.targetTeam)} ${teamName(e.targetTeam)} 的床`, 'warn');
+        Sfx.play('destroy');
+        break;
+      case 'gameover':
+        if (e.winnerTeam) {
+          showToast(`🏆 ${teamName(e.winnerTeam)} 获胜！`, 'good');
+        }
+        Sfx.play('win');
+        break;
+    }
+  }
+}
+
+// ==================== SOCKET ====================
+function connect() {
+  socket = io({ reconnection: true, reconnectionAttempts: 50, reconnectionDelay: 1000, reconnectionDelayMax: 8000 });
+  setConnStatus('connecting', '连接中...');
+
+  socket.on('connect', () => {
+    setConnStatus('online', '已连接');
+  });
+
+  socket.on('reconnect_attempt', (n) => {
+    setConnStatus('connecting', `重连中 (${n})...`);
+  });
+
+  socket.on('reconnect_failed', () => {
+    setConnStatus('offline', '重连失败，请刷新页面');
+  });
+
+  socket.on('reconnect', () => {
+    setConnStatus('online', '已重连');
+    if (myCode && myPlayerId) {
+      socket.emit('rejoin', { code: myCode, playerId: myPlayerId });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    setConnStatus('offline', '已断开');
+  });
+
+  socket.on('update', (s) => {
+    state = s;
+    myPlayerId = s.myPlayerId;
+    myCode = s.code;
+    render();
+  });
+
+  socket.on('chatMsg', (data) => {
+    appendChat(data.sender, data.team, data.msg, data.time);
+  });
+}
+
+function setConnStatus(cls, text) {
+  document.getElementById('conn-dot').className = cls;
+  document.getElementById('conn-text').textContent = text;
+}
+
+// ==================== LOBBY FUNCTIONS ====================
+function createRoom() {
+  const numTeams = parseInt(document.getElementById('team-count').value);
+  const name = document.getElementById('create-name').value.trim() || defaultName();
+  socket.emit('createRoom', { numTeams, name }, (res) => {
+    if (!res.ok) { document.getElementById('create-err').textContent = res.error; return; }
+    document.getElementById('create-err').textContent = '';
+    myCode = res.code;
+    myPlayerId = res.playerId;
+  });
+}
+
+function joinRoom() {
+  const code = document.getElementById('join-code').value.trim().toUpperCase();
+  if (code.length !== 4) { document.getElementById('join-err').textContent = '请输入4位房间码'; return; }
+  const name = document.getElementById('join-name').value.trim() || defaultName();
+  socket.emit('joinRoom', { code, name }, (res) => {
+    if (!res.ok) { document.getElementById('join-err').textContent = res.error; return; }
+    document.getElementById('join-err').textContent = '';
+    myCode = res.code;
+    myPlayerId = res.playerId;
+  });
+}
+
+function defaultName() {
+  const adj = ['勇敢', '机智', '无畏', '闪电', '神秘', '暗影', '烈焰', '冰霜'];
+  return adj[Math.floor(Math.random() * adj.length)] + '玩家';
+}
+
+function startGame() {
+  socket.emit('startGame', {}, (res) => {
+    if (!res.ok) { document.getElementById('start-err').textContent = res.error; }
+  });
+}
+
+// ==================== GAME ACTIONS ====================
+function doRPS(choice) {
+  Sfx.play('tap');
+  socket.emit('rpsChoice', { choice }, (res) => {
+    if (!res || !res.ok) { /* silently fail, state will update */ }
+  });
+}
+
+function doAction(action, target) {
+  socket.emit('performAction', { action, target }, (res) => {
+    if (res && !res.ok) console.log('Action failed');
+  });
+}
+
+// ==================== CHAT ====================
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  socket.emit('sendChat', { msg });
+  input.value = '';
+}
+
+function appendChat(sender, team, msg, time) {
+  const container = document.getElementById('chat-msgs');
+  const ph = document.getElementById('chat-placeholder');
+  if (ph) ph.remove();
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  const t = state && state.teams ? state.teams.find(x => x.id === team) : null;
+  const te = t ? t.emoji : '⚪';
+  const tc = t ? t.color : '#888';
+  const ts = new Date(time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  div.innerHTML = `<span class="ctime">[${ts}]</span> <span class="cteam" style="color:${tc}">${te}</span><span class="csender" style="color:${tc}">${escapeHtml(sender)}</span>: <span class="ctext">${msg}</span>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ==================== RENDER ====================
+function render() {
+  if (!state) return;
+
+  // Detect phase transitions
+  if (prevState) {
+    if (prevState.phase === 'rps' && state.phase === 'reveal') Sfx.play('reveal');
+    if (prevState.phase !== 'rps' && state.phase === 'rps' && prevState.phase !== 'lobby') Sfx.play('round');
+  }
+
+  // Process server-sent events (kills, bed destroys, gameover)
+  if (state.lastEvents) {
+    processEvents(state.lastEvents);
+    state.lastEvents = null;
+  }
+  prevState = JSON.parse(JSON.stringify(state));
+
+  // Hide/show sections
+  const isLobby = state.phase === 'lobby';
+  document.getElementById('lobby').style.display = isLobby ? 'flex' : 'none';
+  document.getElementById('room-lobby').style.display = isLobby ? '' : 'none';
+  document.getElementById('game').style.display = (!isLobby) ? 'flex' : 'none';
+  // Chat always visible once in a room
+  document.getElementById('chat-panel').style.display = (state.code && state.phase !== 'setup') ? 'block' : 'none';
+  if (state.code && state.phase !== 'setup') {
+    document.body.classList.add('chat-open');
+  } else {
+    document.body.classList.remove('chat-open');
+  }
+  document.getElementById('board-overlay').innerHTML = '';
+
+  if (state.phase === 'lobby') {
+    renderLobby();
+  } else {
+    renderMap();
+    renderTeams();
+    renderRPS();
+    renderActions();
+    renderLog();
+    renderGameOver();
+  }
+}
+
+function renderLobby() {
+  document.getElementById('room-code-display').textContent = state.code;
+
+  // Show last winner if returning from a game
+  let winBanner = '';
+  if (state.lastWinner) {
+    winBanner = `<div style="background:#2a2a1a;border:1px solid #ffd700;border-radius:8px;padding:8px;margin-bottom:10px;text-align:center;">
+      <span style="color:#ffd700;font-weight:bold;">🏆 上局赢家：${teamEmoji(state.lastWinner)} ${teamName(state.lastWinner)}</span>
+    </div>`;
+  }
+
+  let html = winBanner;
+  for (const t of state.teams) {
+    const player = state.players.find(p => p.team === t.id);
+    html += `<div class="team-slot">`;
+    html += `<span class="dot" style="background:${t.color}"></span>`;
+    html += `<span>${t.emoji} ${t.name}</span>`;
+    if (player && player.connected) {
+      html += `<span class="status taken">👤 ${player.name}</span>`;
+    } else {
+      html += `<span class="status waiting">等待加入...</span>`;
+    }
+    html += `</div>`;
+  }
+  document.getElementById('team-slots').innerHTML = html;
+
+  // Show personal stats if available
+  if (state.stats) {
+    const s = state.stats;
+    document.getElementById('my-stats').innerHTML = `
+      <div style="margin-top:10px;padding:8px;border-radius:6px;background:#252540;font-size:11px;text-align:center;color:#aaa;">
+        📊 我的战绩：🏆${s.wins||0}胜 · ⚔️${s.kills||0}杀 · 🛏️${s.bedsDestroyed||0}挖床 · 🎮${s.games||0}局
+      </div>`;
+  } else {
+    document.getElementById('my-stats').innerHTML = '';
+  }
+
+  const allClaimed = state.allClaimed || (state.players.length >= state.teams.length);
+  document.getElementById('btn-start-game').disabled = !allClaimed;
+  if (!allClaimed) {
+    document.getElementById('btn-start-game').textContent = `等待玩家加入 (${state.players.filter(p=>p.connected).length}/${state.teams.length})...`;
+  } else {
+    document.getElementById('btn-start-game').textContent = state.lastWinner ? '🔄 再来一局' : '⚔️ 开始游戏';
+  }
+}
+
+function renderMap() {
+  const mapEl = document.getElementById('map');
+  const svgEl = document.getElementById('conn-svg');
+  mapEl.innerHTML = '';
+
+  // Draw connections
+  const rect = document.getElementById('board-container').getBoundingClientRect();
+  const w = rect.width || 800, h = rect.height || 600;
+  let svg = '';
+  const drawn = new Set();
+  for (const [lid, loc] of Object.entries(state.locations)) {
+    const pos = state.gridPos[lid];
+    if (!pos) continue;
+    for (const cid of loc.conns) {
+      const key = [lid, cid].sort().join('-');
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+      const cp = state.gridPos[cid];
+      if (!cp) continue;
+      svg += `<line x1="${pos.x/100*w}" y1="${pos.y/100*h}" x2="${cp.x/100*w}" y2="${cp.y/100*h}" />`;
+    }
+  }
+  svgEl.innerHTML = svg;
+
+  // Draw locations
+  for (const [lid, loc] of Object.entries(state.locations)) {
+    const pos = state.gridPos[lid];
+    if (!pos) continue;
+    const div = document.createElement('div');
+    div.className = 'map-loc';
+    if (lid === 'main') div.classList.add('main-island');
+    div.style.left = pos.x + '%';
+    div.style.top = pos.y + '%';
+
+    if (loc.team) {
+      const t = state.teams.find(x => x.id === loc.team);
+      const tc = t ? t.color : '#888';
+      div.style.background = `rgba(${hexRgb(tc)},0.2)`;
+      div.style.border = `2px solid ${tc}`;
+    } else {
+      div.style.background = '#2a2a4a';
+      div.style.border = lid === 'main' ? '3px solid #ffd700' : '2px solid #555';
+    }
+
+    if (state.currentActorId) {
+      const actor = state.players.find(p => p.id === state.currentActorId);
+      if (actor && actor.location === lid && state.phase === 'action') {
+        div.classList.add('highlight');
+      }
+    }
+
+    let html = '';
+    if (loc.isBed) {
+      const t = state.teams.find(x => x.id === loc.team);
+      html += `<span class="bed-icon${(t && t.bedAlive) ? '' : ' destroyed'}">${(t && t.bedAlive) ? '🛏️' : '💀'}</span>`;
+    }
+    html += `<span>${loc.name}</span>`;
+
+    const here = state.players.filter(p => p.alive && p.location === lid);
+    if (here.length > 0) {
+      html += '<div class="loc-players">';
+      for (const p of here) {
+        const tc = state.teams.find(x => x.id === p.team);
+        html += `<span class="p-token" style="background:${tc?tc.color:'#888'}" title="${p.name}">${tc?tc.emoji:'?'}</span>`;
+      }
+      html += '</div>';
+    }
+
+    const deadHere = state.players.filter(p => !p.alive && p.location === lid);
+    if (deadHere.length > 0 && here.length === 0) {
+      html += '<div class="loc-players">';
+      for (const p of deadHere) {
+        html += `<span class="p-token dead" title="${p.name} (阵亡)">💀</span>`;
+      }
+      html += '</div>';
+    }
+
+    div.innerHTML = html;
+    mapEl.appendChild(div);
+  }
+}
+
+function hexRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+function renderTeams() {
+  let html = '<h3>🏴 队伍状态</h3>';
+  for (const t of state.teams) {
+    const alive = state.players.filter(p => p.team === t.id && p.alive && p.connected).length;
+    const deadButBed = state.players.filter(p => p.team === t.id && !p.alive && t.bedAlive && p.connected !== false).length > 0;
+    const eliminated = !t.bedAlive && alive === 0;
+    let cls = eliminated ? ' eliminated' : '';
+    html += `<div class="team-row${cls}">`;
+    html += `<span class="tcolor" style="background:${t.color}"></span>`;
+    html += `<span>${t.emoji} ${t.name}</span>`;
+    let s = `🛏️${t.bedAlive ? '床完好' : '床已毁'}`;
+    if (alive > 0) s += ` · 👤${alive}人`;
+    if (deadButBed) s += ' · 🔄复活中';
+    html += `<span class="tstatus">${s}</span>`;
+    html += `</div>`;
+  }
+  document.getElementById('teams-status').innerHTML = html;
+}
+
+function renderRPS() {
+  const el = document.getElementById('rps-section');
+  if (state.phase !== 'rps' && state.phase !== 'reveal') { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  let html = '<h3>✊ 石头剪刀布</h3>';
+
+  if (state.phase === 'reveal') {
+    html += '<p style="text-align:center;color:#ffd700;font-size:12px;margin-bottom:6px;">📢 结果已揭晓</p>';
+    for (const p of state.players) {
+      if (!p.alive || !p.connected) continue;
+      const c = state.rpsChoices && state.rpsChoices[p.id];
+      if (!c) continue;
+      const isWinner = state.winners && state.winners.includes(p.id);
+      html += `<div class="rps-reveal-row" style="border-left:3px solid ${teamColor(p.team)}">`;
+      html += `<span>${p.name}</span>`;
+      html += `<span class="emoji-lg">${RPS_EMOJI[c]} ${RPS_LABEL[c]}</span>`;
+      if (isWinner) html += ' 🏆';
+      html += `</div>`;
+    }
+    if (state.winners.length === 0) {
+      html += '<p style="text-align:center;color:#ffd700;font-size:12px;">🤝 平局！无人获得行动权</p>';
+    } else {
+      const perWinner = Math.max(1, state.loserCount);
+      html += `<p style="text-align:center;color:#2ecc71;font-size:13px;margin-top:4px;">🏆 赢家各获得 ${perWinner} 次行动</p>`;
+    }
+  } else {
+    // RPS selection phase
+    const me = state.players.find(p => p.id === myPlayerId);
+    const myChoice = me ? state.rpsMyChoice : null;
+    const iChose = myChoice !== null;
+
+    if (me && me.alive && me.connected !== false) {
+      if (iChose) {
+        html += `<div style="text-align:center;padding:16px;font-size:28px;color:#2ecc71;">✅ 已选择 ${RPS_EMOJI[myChoice]}</div>`;
+      } else {
+        html += '<p style="text-align:center;color:#ffd700;font-size:13px;margin-bottom:8px;">👆 你的选择（点击出拳）</p>';
+        for (const c of RPS) {
+          html += `<button class="rps-big-btn" onclick="doRPS('${c}');render();">`;
+          html += `<span class="emoji-big">${RPS_EMOJI[c]}</span>`;
+          html += `<span class="label-big">${RPS_LABEL[c]}</span>`;
+          html += `</button>`;
+        }
+      }
+    } else if (me) {
+      html += '<p style="text-align:center;color:#888;font-size:13px;">你已阵亡，等待下一轮...</p>';
+    }
+
+    // Status for all players
+    html += '<div style="margin-top:10px;border-top:1px solid #333;padding-top:6px;">';
+    html += '<p style="font-size:11px;color:#666;margin-bottom:4px;">玩家状态</p>';
+    for (const p of state.players) {
+      if (!p.connected) continue;
+      if (!p.alive) {
+        html += `<div class="rps-status-row" style="opacity:0.4"><span style="color:${teamColor(p.team)}">${teamEmoji(p.team)}</span> ${p.name} <span style="margin-left:auto;color:#e74c3c;">💀 阵亡</span></div>`;
+      } else {
+        const readyPlayers = state.rpsReadyPlayers || [];
+        const chosen = readyPlayers.includes(p.id);
+        html += `<div class="rps-status-row" style="flex-wrap:wrap;">`;
+        html += `<span style="color:${teamColor(p.team)}">${teamEmoji(p.team)}</span> ${p.name}`;
+        if (chosen) {
+          html += `<span class="choice-em" style="color:#2ecc71;">✅</span>`;
+        } else {
+          html += `<span class="choice-em" style="color:#ffd700;">⏳</span>`;
+        }
+
+        // RPS history stats
+        const hist = state.rpsHistory && state.rpsHistory[p.id];
+        if (hist && hist.length > 0) {
+          const rock = hist.filter(c => c === 'rock').length;
+          const paper = hist.filter(c => c === 'paper').length;
+          const scis = hist.filter(c => c === 'scissors').length;
+          const total = hist.length;
+          const rp = Math.round(rock / total * 100);
+          const pp = Math.round(paper / total * 100);
+          const sp = Math.round(scis / total * 100);
+          html += `<span style="width:100%;font-size:10px;color:#888;margin-top:2px;">`;
+          html += `📊 ✊${rp}% ✋${pp}% ✌️${sp}%`;
+          if (total > 1) {
+            const recent = hist.slice(-5);
+            html += ` · <span style="color:#aaa;">${recent.map(c => RPS_EMOJI[c]).join(' ')}</span>`;
+          }
+          html += `</span>`;
+        }
+        html += `</div>`;
+      }
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function renderActions() {
+  const el = document.getElementById('action-section');
+  if (state.phase !== 'action') { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  const isMe = state.currentActorId === myPlayerId;
+  const actor = state.players.find(p => p.id === state.currentActorId);
+  if (!actor) { el.innerHTML = '<h3>⚡ 行动阶段</h3><p style="font-size:12px;text-align:center;color:#ffd700;">行动结束，进入下一轮...</p>'; return; }
+
+  let html = '<h3>⚡ 行动阶段</h3>';
+  const rem = state.winnerActions[actor.id] || 0;
+  html += `<div class="action-info">${actor.name} 行动中<br>剩余: <b>${rem}</b> 次 ${isMe ? '(轮到你!)' : '(等待中...)'}</div>`;
+
+  if (!isMe) { el.innerHTML = html; return; }
+
+  html += '<div class="action-buttons">';
+
+  const loc = state.locations[actor.location];
+  if (loc) {
+    for (const cid of loc.conns) {
+      const cloc = state.locations[cid];
+      if (!cloc) continue;
+      html += `<button class="action-btn" onclick="doAction('move','${cid}');render();">🚶 移动到 ${cloc.name}</button>`;
+    }
+  }
+
+  const enemies = state.players.filter(p => p.alive && p.location === actor.location && p.team !== actor.team);
+  for (const e of enemies) {
+    html += `<button class="action-btn" style="border-color:#e74c3c;" onclick="doAction('kill',${e.id});render();">⚔️ 击杀 ${teamEmoji(e.team)} ${e.name}</button>`;
+  }
+
+  if (loc && loc.isBed && loc.team !== actor.team) {
+    const t = state.teams.find(x => x.id === loc.team);
+    if (t && t.bedAlive) {
+      html += `<button class="action-btn" style="border-color:#f39c12;" onclick="doAction('destroyBed');render();">🛏️ 摧毁 ${t.name} 的床</button>`;
+    }
+  }
+
+  html += `<button class="action-btn pass" onclick="doAction('pass');render();">⏭️ 跳过 (剩余${rem}次)</button>`;
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderLog() {
+  let html = '';
+  for (const e of state.logEntries) {
+    html += `<div class="le ${e.type || ''}">${e.msg}</div>`;
+  }
+  document.getElementById('log-entries').innerHTML = html;
+}
+
+function renderGameOver() {
+  const overlay = document.getElementById('gameover-overlay');
+  if (state.phase === 'gameover') {
+    overlay.classList.add('show');
+    document.getElementById('go-content').innerHTML = `
+      <h2>${state.winnerTeam ? (teamEmoji(state.winnerTeam) + ' ' + teamName(state.winnerTeam) + ' 获胜！🎉') : '全军覆没...'}</h2>
+      <p style="color:#888;font-size:12px;">8秒后自动回到房间</p>
+      <button onclick="returnToLobby()">🔙 回到房间</button>
+    `;
+  } else {
+    overlay.classList.remove('show');
+  }
+}
+
+function returnToLobby() {
+  document.getElementById('gameover-overlay').classList.remove('show');
+  // Server will set phase to lobby on its own, but dismiss overlay immediately
+}
+
+function teamColor(tid) {
+  const t = state.teams.find(x => x.id === tid);
+  return t ? t.color : '#888';
+}
+function teamEmoji(tid) {
+  const t = state.teams.find(x => x.id === tid);
+  return t ? t.emoji : '⚪';
+}
+function teamName(tid) {
+  const t = state.teams.find(x => x.id === tid);
+  return t ? t.name : tid;
+}
+
+window.addEventListener('resize', () => { if (state && state.phase !== 'lobby') renderMap(); });
+document.getElementById('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+connect();
+</script>
+</body>
+</html>
