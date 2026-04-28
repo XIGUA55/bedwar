@@ -41,10 +41,15 @@ h1 { text-align: center; font-size: 24px; color: #ff6b6b; text-shadow: 0 0 20px 
 
 /* MAP */
 #map { position: relative; width: 100%; height: 100%; }
-.map-loc { position: absolute; transform: translate(-50%, -50%); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; z-index: 2; width: 72px; height: 72px; }
+.map-loc { position: absolute; transform: translate(-50%, -50%); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; z-index: 2; width: 72px; height: 72px; animation: nodeAppear 0.25s ease; }
+@keyframes nodeAppear { from { opacity: 0.5; transform: translate(-50%, -50%) scale(0.85); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 .map-loc.main-island { width: 90px; height: 90px; border: 3px solid #ffd700 !important; }
 .map-loc.highlight { box-shadow: 0 0 16px rgba(255,215,0,0.7) !important; }
 .map-loc.reachable { box-shadow: 0 0 10px rgba(255,255,255,0.35) !important; border-color: #aaa !important; }
+.map-loc.bed-flash { animation: bedFlash 0.6s ease 2; }
+@keyframes bedFlash { 0%,100% { box-shadow: 0 0 0 rgba(255,0,0,0); border-color: inherit; } 50% { box-shadow: 0 0 20px rgba(255,0,0,0.8); border-color: #e74c3c; background: rgba(255,0,0,0.3) !important; } }
+.map-loc.shop-pulse { animation: shopPulse 2.5s ease-in-out infinite; }
+@keyframes shopPulse { 0%,100% { box-shadow: 0 0 0 rgba(255,215,0,0); } 50% { box-shadow: 0 0 10px rgba(255,215,0,0.5); } }
 .loc-players { display: flex; gap: 2px; margin-top: 3px; flex-wrap: wrap; justify-content: center; }
 .p-token { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); font-size: 9px; display: flex; align-items: center; justify-content: center; }
 .p-token.dead { opacity: 0.3; }
@@ -118,6 +123,12 @@ h1 { text-align: center; font-size: 24px; color: #ff6b6b; text-shadow: 0 0 20px 
 #chat-input::placeholder { color: #555; }
 .chat-send-btn { padding: 10px 16px; border: none; background: #ff6b6b; color: #fff; font-size: 14px; cursor: pointer; font-weight: bold; white-space: nowrap; }
 .chat-send-btn:hover { background: #ee5a5a; }
+
+/* Quick chat */
+.quick-chat-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; border-top: 1px solid #2a2a40; }
+.qc-btn { padding: 4px 10px; border-radius: 12px; border: 1px solid #444; background: #2a2a50; color: #ccc; font-size: 11px; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+.qc-btn:hover { border-color: #ffd700; background: #3a3a60; color: #fff; }
+.qc-btn:active { transform: scale(0.95); }
 /* when chat is shown, add bottom padding to app so game content isn't hidden */
 #app { padding-bottom: 0; }
 body.chat-open #app { padding-bottom: 180px; }
@@ -289,6 +300,7 @@ body.chat-open #app { padding-bottom: 180px; }
 <div id="chat-panel">
   <h3>💬 聊天</h3>
   <div id="chat-msgs"><div id="chat-placeholder">暂无消息，输入内容开始聊天...</div></div>
+  <div class="quick-chat-row" id="quick-chat"></div>
   <div class="chat-input-row">
     <input type="text" id="chat-input" maxlength="200" placeholder="发送消息... 支持 emoji 😄" autocomplete="off">
     <button class="chat-send-btn" onclick="sendChat()">发送</button>
@@ -344,6 +356,7 @@ let state = null;      // latest server state
 let myPlayerId = null;
 let myCode = null;
 let prevState = null;
+let flashBeds = new Set();  // bed location IDs that just got destroyed
 
 // ==================== SOUND EFFECTS ====================
 const Sfx = {
@@ -453,6 +466,7 @@ function processEvents(events) {
         Sfx.play('kill');
         break;
       case 'bedDestroy':
+        flashBeds.add(e.targetTeam + '_upper');
         showToast(`🛏️ ${teamEmoji(e.killerTeam)} ${e.killerName} 摧毁了 ${teamEmoji(e.targetTeam)} ${teamName(e.targetTeam)} 的床`, 'warn');
         Sfx.play('destroy');
         break;
@@ -608,6 +622,29 @@ function escapeHtml(s) {
   return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ==================== QUICK CHAT ====================
+const QUICK_PHRASES = [
+  '🏪 去商店！', '🛡️ 守家！', '⚔️ 进攻！', '💰 攒钱中...',
+  '⛏️ 拆它防御！', '💣 炸他们家！', '🏃 快跑！', '🤝 合作？',
+  '🔥 干得漂亮！', '😱 救命！', '🎯 集火！', '😂 haha',
+  '👀 观察中', '💀 我没了', '🔄 等我复活', '✨ 冲鸭',
+];
+function renderQuickChat() {
+  const el = document.getElementById('quick-chat');
+  if (!el) return;
+  // Only show during game or lobby phases where chat is visible
+  let html = '';
+  for (const p of QUICK_PHRASES) {
+    html += `<button class="qc-btn" onclick="quickSay('${escapeHtml(p)}')">${p}</button>`;
+  }
+  el.innerHTML = html;
+}
+function quickSay(msg) {
+  document.getElementById('chat-input').value = msg;
+  sendChat();
+}
+renderQuickChat();
+
 // ==================== RENDER ====================
 function render() {
   if (!state) return;
@@ -728,6 +765,8 @@ function renderMap() {
     const div = document.createElement('div');
     div.className = 'map-loc';
     if (lid === 'main') div.classList.add('main-island');
+    if (loc.isBed && flashBeds.has(lid)) { div.classList.add('bed-flash'); flashBeds.delete(lid); }
+    if (lid === 'shop') div.classList.add('shop-pulse');
     div.style.left = pos.x + '%';
     div.style.top = pos.y + '%';
 
