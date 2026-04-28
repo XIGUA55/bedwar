@@ -404,6 +404,22 @@ function processEvents(events) {
         }
         Sfx.play('win');
         break;
+      case 'breakDef':
+        showToast(`⛏️ ${teamEmoji(e.team)} 拆除了 ${teamName(e.targetTeam)} 的 ${e.removed}层防御 (剩${e.remaining})`, 'info');
+        Sfx.play('kill');
+        break;
+      case 'tnt':
+        showToast(`💥 ${teamEmoji(e.team)} 用TNT炸毁 ${teamName(e.targetTeam)} 全部 ${e.blown}层防御！`, 'warn');
+        Sfx.play('destroy');
+        break;
+      case 'pearl':
+        showToast(`🟣 ${teamEmoji(e.team)} 使用末影珍珠传送`, 'info');
+        Sfx.play('tap');
+        break;
+      case 'suicide':
+        showToast(`💀 ${teamEmoji(e.team)} 自杀了`, 'warn');
+        Sfx.play('kill');
+        break;
     }
   }
 }
@@ -497,8 +513,10 @@ function doRPS(choice) {
 }
 
 function doAction(action, target) {
-  socket.emit('performAction', { action, target }, (res) => {
-    if (res && !res.ok) console.log('Action failed');
+  // 'buy' passes item name as target
+  const payload = action === 'buy' ? { action, item: target } : { action, target };
+  socket.emit('performAction', payload, (res) => {
+    if (res && !res.ok) console.log('Action failed', action);
   });
 }
 
@@ -677,12 +695,13 @@ function renderMap() {
     }
     html += `<span>${loc.name}</span>`;
 
-    const here = state.players.filter(p => p.alive && p.location === lid);
+    const here = state.players.filter(p => (p.alive || p.respawning) && p.location === lid);
     if (here.length > 0) {
       html += '<div class="loc-players">';
       for (const p of here) {
         const tc = state.teams.find(x => x.id === p.team);
-        html += `<span class="p-token" style="background:${tc?tc.color:'#888'}" title="${p.name}">${tc?tc.emoji:'?'}</span>`;
+        const extra = p.respawning ? ' style="opacity:0.5"' : '';
+        html += `<span class="p-token"${extra} style="background:${tc?tc.color:'#888'}" title="${p.name + (p.respawning?' (复活中)':'')}">${tc?tc.emoji:'?'}</span>`;
       }
       html += '</div>';
     }
@@ -709,16 +728,18 @@ function hexRgb(hex) {
 function renderTeams() {
   let html = '<h3>🏴 队伍状态</h3>';
   for (const t of state.teams) {
-    const alive = state.players.filter(p => p.team === t.id && p.alive && p.connected).length;
-    const deadButBed = state.players.filter(p => p.team === t.id && !p.alive && t.bedAlive && p.connected !== false).length > 0;
-    const eliminated = !t.bedAlive && alive === 0;
+    const alive = state.players.filter(p => p.team === t.id && p.alive && !p.respawning && p.connected).length;
+    const respawning = state.players.filter(p => p.team === t.id && p.respawning && p.connected).length;
+    const deadButBed = state.players.filter(p => p.team === t.id && !p.alive && !p.respawning && t.bedAlive && p.connected !== false).length > 0;
+    const eliminated = !t.bedAlive && alive === 0 && respawning === 0;
     let cls = eliminated ? ' eliminated' : '';
     html += `<div class="team-row${cls}">`;
     html += `<span class="tcolor" style="background:${t.color}"></span>`;
     html += `<span>${t.emoji} ${t.name}</span>`;
     let s = `🛏️${t.bedAlive ? '床完好' : '床已毁'}`;
+    if ((t.defense || 0) > 0) s += ` · 🛡️${t.defense || 0}层`;
     if (alive > 0) s += ` · 👤${alive}人`;
-    if (deadButBed) s += ' · 🔄复活中';
+    if (respawning > 0) s += ` · ⏳${respawning}人`;
     html += `<span class="tstatus">${s}</span>`;
     html += `</div>`;
   }
@@ -736,6 +757,7 @@ function renderRPS() {
     html += '<p style="text-align:center;color:#ffd700;font-size:12px;margin-bottom:6px;">📢 结果已揭晓</p>';
     for (const p of state.players) {
       if (!p.alive || !p.connected) continue;
+      if (p.respawning) continue;  // skip respawning, they didn't play
       const c = state.rpsChoices && state.rpsChoices[p.id];
       if (!c) continue;
       const isWinner = state.winners && state.winners.includes(p.id);
@@ -769,6 +791,8 @@ function renderRPS() {
           html += `</button>`;
         }
       }
+    } else if (me && me.respawning) {
+      html += '<p style="text-align:center;color:#e67e22;font-size:13px;">⏳ 等待复活中...</p>';
     } else if (me) {
       html += '<p style="text-align:center;color:#888;font-size:13px;">你已阵亡，等待下一轮...</p>';
     }
@@ -778,7 +802,9 @@ function renderRPS() {
     html += '<p style="font-size:11px;color:#666;margin-bottom:4px;">玩家状态</p>';
     for (const p of state.players) {
       if (!p.connected) continue;
-      if (!p.alive) {
+      if (p.respawning) {
+        html += `<div class="rps-status-row" style="opacity:0.6"><span style="color:${teamColor(p.team)}">${teamEmoji(p.team)}</span> ${p.name} <span style="margin-left:auto;color:#e67e22;">⏳ 复活中</span></div>`;
+      } else if (!p.alive) {
         html += `<div class="rps-status-row" style="opacity:0.4"><span style="color:${teamColor(p.team)}">${teamEmoji(p.team)}</span> ${p.name} <span style="margin-left:auto;color:#e74c3c;">💀 阵亡</span></div>`;
       } else {
         const readyPlayers = state.rpsReadyPlayers || [];
@@ -828,13 +854,18 @@ function renderActions() {
 
   let html = '<h3>⚡ 行动阶段</h3>';
   const rem = state.winnerActions[actor.id] || 0;
-  html += `<div class="action-info">${actor.name} 行动中<br>剩余: <b>${rem}</b> 次 ${isMe ? '(轮到你!)' : '(等待中...)'}</div>`;
+  const pn = ['🪓','⛏️木','⛏️铁','⛏️钻'][actor.pickaxe];
+  let inv = [pn];
+  if (actor.enderPearl > 0) inv.push(`🟣${actor.enderPearl > 1 ? '×'+actor.enderPearl : ''}`);
+  if (actor.tnt) inv.push('💣');
+  html += `<div class="action-info">${actor.name} 行动中 · ${inv.join(' ')}<br>剩余: <b>${rem}</b> 次 ${isMe ? '(轮到你!)' : '(等待中...)'}</div>`;
 
   if (!isMe) { el.innerHTML = html; return; }
 
   html += '<div class="action-buttons">';
 
   const loc = state.locations[actor.location];
+  // Movement
   if (loc) {
     for (const cid of loc.conns) {
       const cloc = state.locations[cid];
@@ -843,17 +874,62 @@ function renderActions() {
     }
   }
 
+  // Shop
+  if (actor.location === 'shop') {
+    const myTeam = state.teams.find(t => t.id === actor.team);
+    if (myTeam) {
+      if (myTeam.defense < 20) {
+        const cost = myTeam.defense < 10 ? 1 : 2;
+        html += `<button class="action-btn" style="border-color:#3498db;" onclick="doAction('buy','defense');render();">🛡️ 加固床防御 (${cost}行动) [${myTeam.defense}/20层]</button>`;
+      }
+      if (actor.pickaxe < 3) {
+        const costs = {0:'1',1:'2',2:'3'};
+        const names = ['木镐','铁镐','钻石镐'];
+        html += `<button class="action-btn" style="border-color:#3498db;" onclick="doAction('buy','pickaxe');render();">⛏️ 升级${names[actor.pickaxe]} (${costs[actor.pickaxe]}行动)</button>`;
+      }
+    }
+    if (actor.enderPearl < 3) {
+      html += `<button class="action-btn" style="border-color:#9b59b6;" onclick="doAction('buy','enderPearl');render();">🟣 购买末影珍珠 (3行动) [${actor.enderPearl}/3]</button>`;
+    }
+    if (!actor.tnt) {
+      html += `<button class="action-btn" style="border-color:#e74c3c;" onclick="doAction('buy','tnt');render();">💣 购买TNT (4行动)</button>`;
+    }
+  }
+
+  // Kill enemies
   const enemies = state.players.filter(p => p.alive && p.location === actor.location && p.team !== actor.team);
   for (const e of enemies) {
     html += `<button class="action-btn" style="border-color:#e74c3c;" onclick="doAction('kill',${e.id});render();">⚔️ 击杀 ${teamEmoji(e.team)} ${e.name}</button>`;
   }
 
+  // At enemy bed: defense or destroy
   if (loc && loc.isBed && loc.team !== actor.team) {
     const t = state.teams.find(x => x.id === loc.team);
     if (t && t.bedAlive) {
-      html += `<button class="action-btn" style="border-color:#f39c12;" onclick="doAction('destroyBed');render();">🛏️ 摧毁 ${t.name} 的床</button>`;
+      if (t.defense > 0) {
+        html += `<button class="action-btn" style="border-color:#f39c12;" onclick="doAction('breakDefense');render();">⛏️ 拆除防御 [${t.defense}层]</button>`;
+        if (actor.tnt) {
+          html += `<button class="action-btn" style="border-color:#e74c3c;" onclick="doAction('useTNT');render();">💥 使用TNT炸毁所有防御</button>`;
+        }
+      } else {
+        html += `<button class="action-btn" style="border-color:#f39c12;" onclick="doAction('destroyBed');render();">🛏️ 摧毁 ${t.name} 的床</button>`;
+      }
     }
   }
+
+  // Ender pearl
+  if (actor.enderPearl > 0) {
+    html += '<div style="margin:4px 0;padding:4px;background:#2a2035;border-radius:6px;">';
+    html += '<span style="font-size:11px;color:#9b59b6;">🟣 末影珍珠 — 传送到：</span>';
+    for (const [lid, l] of Object.entries(state.locations)) {
+      if (lid === actor.location) continue;
+      html += `<button class="action-btn" style="border-color:#9b59b6;font-size:11px;padding:6px;margin:2px 0;" onclick="doAction('useEnderPearl','${lid}');render();">↗ ${l.name}</button>`;
+    }
+    html += '</div>';
+  }
+
+  // Suicide
+  html += `<button class="action-btn" style="border-color:#666;color:#e74c3c;" onclick="if(confirm('确定要自杀？')){doAction('suicide');render();}">💀 自杀 (1行动)</button>`;
 
   html += `<button class="action-btn pass" onclick="doAction('pass');render();">⏭️ 跳过 (剩余${rem}次)</button>`;
   html += '</div>';

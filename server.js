@@ -40,6 +40,11 @@ function buildMap(teamDefs) {
   const gridPos = {};
   locations['main'] = { id: 'main', name: '主岛', team: null, isBed: false, conns: [] };
   gridPos['main'] = { x: 50, y: 50 };
+
+  // Shared shop, connected only to main island
+  locations['shop'] = { id: 'shop', name: '🏪商店', team: null, isBed: false, conns: ['main'] };
+  gridPos['shop'] = { x: 64, y: 64 };
+  locations['main'].conns.push('shop');
   const n = teamDefs.length;
 
   function addTeam(teamDef, bx, by, lx, ly, ux, uy) {
@@ -74,7 +79,7 @@ class GameRoom {
   constructor(code, numTeams) {
     this.code = code;
     this.teams = TEAM_DEFS.slice(0, numTeams).map(t => ({
-      id: t.id, name: t.name, color: t.color, emoji: t.emoji, bedAlive: true
+      id: t.id, name: t.name, color: t.color, emoji: t.emoji, bedAlive: true, defense: 0
     }));
     this.players = [];        // { id, name, team, location, alive, sid }
     this.phase = 'lobby';    // lobby | rps | reveal | action | gameover
@@ -92,6 +97,7 @@ class GameRoom {
     this.roundStats = {};     // playerId -> { kills, bedsDestroyed }
     this.lastEvents = [];     // recent events for toast/sfx on clients
     this.rpsHistory = {};     // playerId -> ['rock', 'paper', ...]
+    this.roundNumber = 0;     // current round count
 
     const map = buildMap(this.teams);
     this.locations = map.locations;
@@ -119,6 +125,8 @@ class GameRoom {
           alive: false,
           sid: sid,
           connected: true,
+          pickaxe: 0,  enderPearl: 0,  tnt: false,
+          respawning: false,  respawnRound: 0,
         };
         this.players.push(p);
         this.addLog(`${t.emoji} ${p.name} 加入房间`, 'info');
@@ -129,7 +137,7 @@ class GameRoom {
   }
 
   alivePlayers() {
-    return this.players.filter(p => p.alive && p.connected !== false);
+    return this.players.filter(p => p.alive && !p.respawning && p.connected !== false);
   }
 
   teamHasBed(tid) {
@@ -159,8 +167,12 @@ class GameRoom {
       p.location = p.team + '_lower';
       p.alive = true;
       p.connected = true;
+      p.pickaxe = 0;  p.enderPearl = 0;  p.tnt = false;
+      p.respawning = false;  p.respawnRound = 0;
     }
+    for (const t of this.teams) t.defense = 0;
     this.phase = 'rps';
+    this.roundNumber = 1;
     this.rpsChoices = {};
     this.rpsRevealed = false;
     this.winners = [];
@@ -175,6 +187,8 @@ class GameRoom {
     for (const p of this.players) this.roundStats[p.id] = { kills: 0, bedsDestroyed: 0 };
     this.lastEvents = [];
     this.rpsHistory = {};
+    this.roundNumber = 1;
+    for (const p of this.players) { this.roundStats[p.id] = { kills: 0, bedsDestroyed: 0 }; this.rpsHistory[p.id] = []; }
     this.addLog(`🎮 游戏开始！${this.teams.length} 支队伍展开对决！`, 'info');
   }
 
@@ -299,6 +313,12 @@ class GameRoom {
     if (!target || !target.alive || target.location !== actor.location || target.team === actor.team) return false;
 
     target.alive = false;
+    target.respawning = true;
+    target.respawnRound = this.roundNumber + 2;
+    target.pickaxe = Math.max(1, target.pickaxe - 1);
+    target.enderPearl = 0;
+    target.tnt = false;
+    target.location = target.team + '_lower';
     this.winnerActions[actor.id]--;
     this.roundStats[actor.id].kills++;
     this.lastEvents.push({ type: 'kill', killerTeam: actor.team, killerName: actor.name, targetTeam: target.team, targetName: target.name });
@@ -324,6 +344,7 @@ class GameRoom {
 
     const t = this.teams.find(t => t.id === loc.team);
     if (!t || !t.bedAlive) return false;
+    if (t.defense > 0) return false;  // must break defense first
 
     t.bedAlive = false;
     this.winnerActions[actor.id]--;
@@ -347,6 +368,126 @@ class GameRoom {
     this.winnerActions[actor.id] = 0;
     this.addLog(`⏭️ ${this.teamEmoji(actor.team)} ${actor.name} 放弃了剩余的 ${remaining} 次行动`, '');
     this.advanceAction(true);
+    return true;
+  }
+
+  // ======== SHOP & ITEMS ========
+  buy(playerId, item) {
+    const actor = this.currentActor();
+    if (!actor || actor.id !== playerId) return false;
+    if (actor.location !== 'shop') return false;
+    const myTeam = this.teams.find(t => t.id === actor.team);
+    if (!myTeam) return false;
+
+    if (item === 'defense') {
+      const cost = myTeam.defense < 10 ? 1 : 2;
+      if (myTeam.defense >= 20) return false;
+      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      myTeam.defense++;
+      this.winnerActions[actor.id] -= cost;
+      this.addLog(`🛡️ ${this.teamEmoji(actor.team)} ${actor.name} 加固了床防御 (${myTeam.defense}层)`, '');
+    } else if (item === 'pickaxe') {
+      const costs = { 0:1, 1:2, 2:3 };
+      const level = actor.pickaxe;
+      if (level >= 3) return false;
+      const cost = costs[level];
+      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      actor.pickaxe++;
+      this.winnerActions[actor.id] -= cost;
+      const names = ['无镐','木镐','铁镐','钻石镐'];
+      this.addLog(`⛏️ ${this.teamEmoji(actor.team)} ${actor.name} 升级到 ${names[actor.pickaxe]}`, '');
+    } else if (item === 'enderPearl') {
+      const cost = 3;
+      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      actor.enderPearl++;
+      this.winnerActions[actor.id] -= cost;
+      this.addLog(`🟣 ${this.teamEmoji(actor.team)} ${actor.name} 购买了末影珍珠 (共${actor.enderPearl}颗)`, '');
+    } else if (item === 'tnt') {
+      const cost = 4;
+      if (actor.tnt) return false;
+      if ((this.winnerActions[actor.id] || 0) < cost) return false;
+      actor.tnt = true;
+      this.winnerActions[actor.id] -= cost;
+      this.addLog(`💣 ${this.teamEmoji(actor.team)} ${actor.name} 购买了TNT`, '');
+    } else {
+      return false;
+    }
+    this.advanceAction();
+    return true;
+  }
+
+  breakDefense(playerId) {
+    const actor = this.currentActor();
+    if (!actor || actor.id !== playerId) return false;
+    if ((this.winnerActions[actor.id] || 0) <= 0) return false;
+    const loc = this.locations[actor.location];
+    if (!loc || !loc.isBed || loc.team === actor.team) return false;
+    const targetTeam = this.teams.find(t => t.id === loc.team);
+    if (!targetTeam || targetTeam.defense <= 0) return false;
+
+    const multi = [1, 2, 3, 5][actor.pickaxe];
+    const removed = Math.min(multi, targetTeam.defense);
+    targetTeam.defense -= removed;
+    this.winnerActions[actor.id]--;
+    this.addLog(`⛏️ ${this.teamEmoji(actor.team)} ${actor.name} 拆除了 ${this.teamName(targetTeam.id)} ${removed}层防御 (剩余${targetTeam.defense})`, 'warn');
+    this.lastEvents.push({ type: 'breakDef', team: actor.team, targetTeam: targetTeam.id, removed, remaining: targetTeam.defense });
+    this.advanceAction();
+    return true;
+  }
+
+  useTNT(playerId) {
+    const actor = this.currentActor();
+    if (!actor || actor.id !== playerId) return false;
+    if (!actor.tnt) return false;
+    if ((this.winnerActions[actor.id] || 0) <= 0) return false;
+    const loc = this.locations[actor.location];
+    if (!loc || !loc.isBed || loc.team === actor.team) return false;
+    const targetTeam = this.teams.find(t => t.id === loc.team);
+    if (!targetTeam || targetTeam.defense <= 0) return false;
+
+    const blown = targetTeam.defense;
+    targetTeam.defense = 0;
+    actor.tnt = false;
+    this.winnerActions[actor.id]--;
+    this.addLog(`💥 ${this.teamEmoji(actor.team)} ${actor.name} 用TNT炸毁了 ${this.teamName(targetTeam.id)} 全部${blown}层防御！`, 'warn');
+    this.lastEvents.push({ type: 'tnt', team: actor.team, killerName: actor.name, targetTeam: targetTeam.id, blown });
+    this.advanceAction();
+    return true;
+  }
+
+  useEnderPearl(playerId, targetId) {
+    const actor = this.currentActor();
+    if (!actor || actor.id !== playerId) return false;
+    if (actor.enderPearl <= 0) return false;
+    if ((this.winnerActions[actor.id] || 0) <= 0) return false;
+    if (!this.locations[targetId]) return false;
+
+    actor.enderPearl--;
+    actor.location = targetId;
+    this.winnerActions[actor.id]--;
+    this.addLog(`🟣 ${this.teamEmoji(actor.team)} ${actor.name} 用末影珍珠传送到 ${this.locations[targetId].name}`, '');
+    this.lastEvents.push({ type: 'pearl', team: actor.team, killerName: actor.name, loc: targetId });
+    this.advanceAction();
+    return true;
+  }
+
+  suicide(playerId) {
+    const actor = this.currentActor();
+    if (!actor || actor.id !== playerId) return false;
+    if ((this.winnerActions[actor.id] || 0) <= 0) return false;
+
+    actor.alive = false;
+    actor.respawning = true;
+    actor.respawnRound = this.roundNumber + 2;
+    actor.pickaxe = Math.max(1, actor.pickaxe - 1);
+    actor.enderPearl = 0;
+    actor.tnt = false;
+    actor.location = actor.team + '_lower';
+    this.winnerActions[actor.id]--;
+    this.addLog(`💀 ${this.teamEmoji(actor.team)} ${actor.name} 自杀了`, 'warn');
+    this.lastEvents.push({ type: 'suicide', team: actor.team, killerName: actor.name });
+    if (this.checkWin()) return true;
+    this.advanceAction();
     return true;
   }
 
@@ -408,11 +549,13 @@ class GameRoom {
   }
 
   returnToLobby() {
-    for (const t of this.teams) t.bedAlive = true;
+    for (const t of this.teams) { t.bedAlive = true; t.defense = 0; }
     for (const p of this.players) {
       p.alive = false;
       p.location = p.team + '_lower';
       p.connected = p.connected !== false;
+      p.pickaxe = 0; p.enderPearl = 0; p.tnt = false;
+      p.respawning = false; p.respawnRound = 0;
     }
     this.phase = 'lobby';
     this.rpsChoices = {};
@@ -429,9 +572,11 @@ class GameRoom {
   }
 
   startNextRound() {
+    this.roundNumber++;
     for (const p of this.players) {
-      if (!p.alive && this.teamHasBed(p.team) && p.connected !== false) {
+      if (p.respawning && this.roundNumber >= p.respawnRound && this.teamHasBed(p.team) && p.connected !== false) {
         p.alive = true;
+        p.respawning = false;
         p.location = p.team + '_lower';
         this.addLog(`🔄 ${this.teamEmoji(p.team)} ${p.name} 复活！`, 'good');
       }
@@ -459,7 +604,7 @@ class GameRoom {
       code: this.code,
       phase: this.phase,
       teams: this.teams,
-      players: this.players.map(p => ({ id: p.id, name: p.name, team: p.team, location: p.location, alive: p.alive, connected: p.connected !== false })),
+      players: this.players.map(p => ({ id: p.id, name: p.name, team: p.team, location: p.location, alive: p.alive, connected: p.connected !== false, respawning: p.respawning, pickaxe: p.pickaxe, enderPearl: p.enderPearl, tnt: p.tnt })),
       locations: this.locations,
       gridPos: this.gridPos,
       rpsRevealed: this.rpsRevealed,
@@ -605,6 +750,11 @@ io.on('connection', (socket) => {
       case 'kill': ok = room.performKill(rec.playerId, data.target); break;
       case 'destroyBed': ok = room.performDestroyBed(rec.playerId); break;
       case 'pass': ok = room.passAction(rec.playerId); break;
+      case 'buy': ok = room.buy(rec.playerId, data.item); break;
+      case 'breakDefense': ok = room.breakDefense(rec.playerId); break;
+      case 'useTNT': ok = room.useTNT(rec.playerId); break;
+      case 'useEnderPearl': ok = room.useEnderPearl(rec.playerId, data.target); break;
+      case 'suicide': ok = room.suicide(rec.playerId); break;
     }
     if (ok) broadcast(room);
     else callback({ ok: false, error: '操作无效' });
