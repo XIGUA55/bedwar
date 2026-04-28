@@ -98,6 +98,7 @@ class GameRoom {
     this.lastEvents = [];     // recent events for toast/sfx on clients
     this.rpsHistory = {};     // playerId -> ['rock', 'paper', ...]
     this.roundNumber = 0;     // current round count
+    this.highlights = [];     // key moments for post-game recap
 
     const map = buildMap(this.teams);
     this.locations = map.locations;
@@ -189,6 +190,7 @@ class GameRoom {
     for (const p of this.players) this.roundStats[p.id] = { kills: 0, bedsDestroyed: 0 };
     this.lastEvents = [];
     this.rpsHistory = {};
+    this.highlights = [];
     this.roundNumber = 1;
     for (const p of this.players) { this.roundStats[p.id] = { kills: 0, bedsDestroyed: 0 }; this.rpsHistory[p.id] = []; }
     this.addLog(`🎮 游戏开始！${this.teams.length} 支队伍展开对决！`, 'info');
@@ -382,6 +384,7 @@ class GameRoom {
     this.winnerActions[actor.id]--;
     this.roundStats[actor.id].bedsDestroyed++;
     this.lastEvents.push({ type: 'bedDestroy', killerTeam: actor.team, killerName: actor.name, targetTeam: t.id });
+    this.highlights.push({ type: 'bedDestroy', msg: `🛏️ ${this.teamEmoji(actor.team)} ${actor.name} 摧毁了 ${this.teamName(t.id)} 的床` });
     this.addLog(`🛏️ ${this.teamEmoji(actor.team)} ${actor.name} 摧毁了 ${this.teamName(t.id)} 的床！`, 'warn');
 
     if (this.teamEliminated(t.id)) {
@@ -507,6 +510,7 @@ class GameRoom {
     this.winnerActions[actor.id]--;
     this.addLog(`💥 ${this.teamEmoji(actor.team)} ${actor.name} 用TNT炸毁了 ${this.teamName(targetTeam.id)} 全部${blown}层防御！`, 'warn');
     this.lastEvents.push({ type: 'tnt', team: actor.team, killerName: actor.name, targetTeam: targetTeam.id, blown });
+    this.highlights.push({ type: 'tnt', msg: `💥 ${this.teamEmoji(actor.team)} 用TNT炸毁 ${this.teamName(targetTeam.id)} ${blown}层防御` });
     this.advanceAction();
     return true;
   }
@@ -583,6 +587,7 @@ class GameRoom {
         this.phase = 'gameover';
         this.addLog('💀 所有队伍全军覆没！', 'warn');
       }
+      this.compileGameSummary();
       this.saveGameStats();
       this.lastEvents.push({ type: 'gameover', winnerTeam: this.winnerTeam });
       setTimeout(() => this.returnToLobby(), 8000);
@@ -603,6 +608,25 @@ class GameRoom {
       globalStats[key].bedsDestroyed += rs.bedsDestroyed;
     }
     saveStats(globalStats);
+  }
+
+  compileGameSummary() {
+    let mvp = null, mvpKills = 0, mvpBeds = 0;
+    for (const p of this.players) {
+      const rs = this.roundStats[p.id] || { kills: 0, bedsDestroyed: 0 };
+      if (rs.kills + rs.bedsDestroyed > mvpKills + mvpBeds) {
+        mvp = p; mvpKills = rs.kills; mvpBeds = rs.bedsDestroyed;
+      }
+    }
+    let bestDefTeam = null, bestDef = 0;
+    for (const t of this.teams) {
+      if ((t.defense || 0) > bestDef) { bestDefTeam = t; bestDef = t.defense || 0; }
+    }
+    this.gameSummary = {
+      mvp: mvp ? { name: mvp.name, team: mvp.team, kills: mvpKills, beds: mvpBeds } : null,
+      bestDefense: bestDefTeam ? { team: bestDefTeam.id, name: bestDefTeam.name, layers: bestDef } : null,
+      highlights: this.highlights.slice(-5),
+    };
   }
 
   returnToLobby() {
@@ -685,6 +709,7 @@ class GameRoom {
       lastEvents: this.lastEvents.splice(0, this.lastEvents.length), // consume and send
       stats: forPid ? (globalStats[this.players.find(p => p.id === forPid)?.name] || null) : null,
       rpsHistory: this.rpsHistory,
+      gameSummary: this.gameSummary || null,
     };
   }
 }

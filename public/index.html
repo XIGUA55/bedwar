@@ -44,6 +44,7 @@ h1 { text-align: center; font-size: 24px; color: #ff6b6b; text-shadow: 0 0 20px 
 .map-loc { position: absolute; transform: translate(-50%, -50%); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; z-index: 2; width: 72px; height: 72px; }
 .map-loc.main-island { width: 90px; height: 90px; border: 3px solid #ffd700 !important; }
 .map-loc.highlight { box-shadow: 0 0 16px rgba(255,215,0,0.7) !important; }
+.map-loc.reachable { box-shadow: 0 0 10px rgba(255,255,255,0.35) !important; border-color: #aaa !important; }
 .loc-players { display: flex; gap: 2px; margin-top: 3px; flex-wrap: wrap; justify-content: center; }
 .p-token { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); font-size: 9px; display: flex; align-items: center; justify-content: center; }
 .p-token.dead { opacity: 0.3; }
@@ -210,7 +211,18 @@ body.chat-open #app { padding-bottom: 180px; }
   .go-card h2 { font-size: 20px; }
 }
 
-/* ===== TOAST ===== */
+/* ===== HELP MODAL ===== */
+#help-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 200; justify-content: center; align-items: center; }
+#help-overlay.show { display: flex; }
+.help-card { background: #1e1e3a; border: 2px solid #ffd700; border-radius: 14px; padding: 28px 24px; max-width: 520px; max-height: 85vh; overflow-y: auto; margin: 16px; }
+.help-card h2 { color: #ffd700; font-size: 20px; margin-bottom: 14px; text-align: center; }
+.help-card h3 { color: #ff6b6b; font-size: 14px; margin: 12px 0 4px; }
+.help-card p, .help-card li { font-size: 13px; line-height: 1.7; color: #ccc; }
+.help-card ul { padding-left: 18px; margin: 4px 0; }
+.help-card kbd { background: #333; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+.help-close { display: block; margin: 14px auto 0; padding: 8px 32px; border-radius: 8px; border: none; background: #ff6b6b; color: #fff; font-size: 14px; cursor: pointer; }
+.help-btn { padding: 6px 16px; border-radius: 6px; border: 1px solid #ffd700; background: transparent; color: #ffd700; font-size: 12px; cursor: pointer; }
+.help-btn:hover { background: rgba(255,215,0,0.1); }
 #toasts { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .toast { padding: 10px 22px; border-radius: 10px; font-size: 15px; font-weight: bold; animation: toastIn 0.35s ease; max-width: 92vw; text-align: center; pointer-events: auto; white-space: nowrap; }
 .toast.warn { background: rgba(200,60,40,0.92); color: #fff; }
@@ -255,6 +267,7 @@ body.chat-open #app { padding-bottom: 180px; }
 <div id="team-slots"></div>
 <div id="my-stats"></div>
 <button id="btn-start-game" style="margin-top:14px;width:auto;padding:10px 40px;" onclick="startGame()" disabled>⚔️ 开始游戏</button>
+<button class="help-btn" style="margin-top:8px;" onclick="openHelp()">📖 玩法说明</button>
 <p class="warning" id="start-err"></p>
 </div>
 </div>
@@ -283,6 +296,39 @@ body.chat-open #app { padding-bottom: 180px; }
 </div>
 
 <div id="gameover-overlay"><div class="go-card" id="go-content"></div></div>
+
+<div id="help-overlay">
+  <div class="help-card">
+    <h2>📖 起床战争 玩法说明</h2>
+    <h3>🎯 目标</h3>
+    <p>摧毁敌方队伍的床 → 使其无法复活 → 消灭所有敌人 → 获胜。</p>
+    <h3>✊ 石头剪刀布</h3>
+    <p>每轮所有存活玩家暗选手势，全部选定后揭晓。赢家获得行动权。已阵亡等待复活的玩家自动算"输家"，给赢家更多行动点。</p>
+    <p>右侧面板会显示每个人本局的 <b>出拳概率</b> 和 <b>最近出招序列</b>，可以用来预判对手。</p>
+    <h3>⚡ 行动</h3>
+    <ul>
+      <li>🚶 <b>移动</b> — 走到相邻位置（1行动）</li>
+      <li>⚔️ <b>击杀</b> — 消灭同一格的敌人（1行动）</li>
+      <li>💀 <b>自杀</b> — 任意位置自杀（1行动），等一回合复活</li>
+    </ul>
+    <h3>🏪 商店（主岛旁边）</h3>
+    <p>只能在商店购买，使用行动点支付。站在商店不动可以 <b>💰储蓄行动点</b> 跨回合攒钱买大件。离开商店储蓄清零。</p>
+    <ul>
+      <li>🛡️ <b>加固床防御</b> — 每层1~2行动，上限20层</li>
+      <li>⛏️ <b>升级镐子</b> — 木/铁/钻石（1/2/3行动），分别拆2/3/5层</li>
+      <li>🟣 <b>末影珍珠</b> — 3行动，持有后可传送到任意位置</li>
+      <li>💣 <b>TNT</b> — 4行动，一键炸毁敌方全部防御</li>
+    </ul>
+    <h3>🛏️ 拆家</h3>
+    <p>走到敌方床位置 → 先用镐子一层层拆防御（或用 TNT 炸光）→ 防御归零后才能摧毁床。</p>
+    <h3>💀 死亡</h3>
+    <p>被击杀或自杀后：跳过一整轮不参与RPS → 下轮复活。镐子降一级（最少木镐），珍珠/TNT/储蓄全部掉落。</p>
+    <p>床被摧毁后该队成员永久死亡，无法复活。</p>
+    <h3>💬 聊天</h3>
+    <p>屏幕底部固定聊天栏，全程可用（赛前/赛中/赛后），支持 Emoji。</p>
+    <button class="help-close" onclick="closeHelp()">知道了</button>
+  </div>
+</div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -700,12 +746,22 @@ function renderMap() {
       if (actor && actor.location === lid && state.phase === 'action') {
         div.classList.add('highlight');
       }
+      // Highlight reachable locations when it's my turn
+      if (actor && state.currentActorId === myPlayerId && state.phase === 'action') {
+        const actorLoc = state.locations[actor.location];
+        if (actorLoc && actorLoc.conns.includes(lid)) {
+          div.classList.add('reachable');
+        }
+      }
     }
 
     let html = '';
     if (loc.isBed) {
       const t = state.teams.find(x => x.id === loc.team);
       html += `<span class="bed-icon${(t && t.bedAlive) ? '' : ' destroyed'}">${(t && t.bedAlive) ? '🛏️' : '💀'}</span>`;
+      if (t && t.bedAlive && (t.defense || 0) > 0) {
+        html += `<span style="font-size:10px;color:#3498db;">🛡️${t.defense}</span>`;
+      }
     }
     html += `<span>${loc.name}</span>`;
 
@@ -973,9 +1029,28 @@ function renderGameOver() {
   const overlay = document.getElementById('gameover-overlay');
   if (state.phase === 'gameover') {
     overlay.classList.add('show');
+    let recap = '';
+    const gs = state.gameSummary;
+    if (gs) {
+      recap += '<div style="text-align:left;margin:12px 0;font-size:13px;line-height:1.8;">';
+      if (gs.mvp && gs.mvp.kills + gs.mvp.beds > 0) {
+        recap += `<div>⭐ MVP：${teamEmoji(gs.mvp.team)} ${gs.mvp.name} (${gs.mvp.kills}杀 ${gs.mvp.beds}拆床)</div>`;
+      }
+      if (gs.bestDefense && gs.bestDefense.layers > 0) {
+        recap += `<div>🛡️ 最佳防御：${teamEmoji(gs.bestDefense.team)} ${gs.bestDefense.name} (${gs.bestDefense.layers}层)</div>`;
+      }
+      if (gs.highlights && gs.highlights.length > 0) {
+        recap += '<div style="margin-top:4px;color:#ffd700;">⚡ 关键瞬间：</div>';
+        for (const h of gs.highlights) {
+          recap += `<div style="font-size:11px;opacity:0.9;">${h.msg}</div>`;
+        }
+      }
+      recap += '</div>';
+    }
     document.getElementById('go-content').innerHTML = `
       <h2>${state.winnerTeam ? (teamEmoji(state.winnerTeam) + ' ' + teamName(state.winnerTeam) + ' 获胜！🎉') : '全军覆没...'}</h2>
-      <p style="color:#888;font-size:12px;">8秒后自动回到房间</p>
+      ${recap}
+      <p style="color:#888;font-size:11px;">8秒后自动回到房间</p>
       <button onclick="returnToLobby()">🔙 回到房间</button>
     `;
   } else {
@@ -986,6 +1061,13 @@ function renderGameOver() {
 function returnToLobby() {
   document.getElementById('gameover-overlay').classList.remove('show');
   // Server will set phase to lobby on its own, but dismiss overlay immediately
+}
+
+function openHelp() {
+  document.getElementById('help-overlay').classList.add('show');
+}
+function closeHelp() {
+  document.getElementById('help-overlay').classList.remove('show');
 }
 
 function teamColor(tid) {
