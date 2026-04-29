@@ -120,6 +120,8 @@ let socket;
 let state = null;
 let myPlayerId = null;
 let myCode = null;
+let prevState = null;
+let flashBeds = new Set();  // bed location IDs that just got destroyed
 
 // ==================== SOCKET ====================
 function connect() {
@@ -133,7 +135,15 @@ function connect() {
     if (myCode && myPlayerId) socket.emit('rejoin', { code: myCode, playerId: myPlayerId });
   });
   socket.on('disconnect', () => setConnStatus('offline', '已断开'));
-  socket.on('update', (s) => { state = s; myPlayerId = s.myPlayerId; myCode = s.code; render(); });
+  socket.on('update', (s) => {
+    try {
+      state = s; myPlayerId = s.myPlayerId; myCode = s.code;
+      render();
+    } catch(e) {
+      document.getElementById('create-err').textContent = 'RENDER ERROR: ' + e.message;
+      console.error('render error:', e);
+    }
+  });
   socket.on('chatMsg', (data) => appendChat(data.sender, data.team, data.msg, data.time));
 }
 
