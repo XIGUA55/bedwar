@@ -29,8 +29,18 @@ function render() {
   }
   document.getElementById('board-overlay').innerHTML = '';
 
-  // Timer for timed phases
-  if (state.phaseEndTime) updateTimerBar(state);
+  // Timer interval management
+  const timedPhases = ['prepare', 'rps'];
+  const needTimer = (s) => s.phaseEndTime && (timedPhases.includes(s.phase) ||
+    (s.phase === 'action' && s.currentActorId === s.myPlayerId));
+  if (needTimer(state)) {
+    if (!window._timerInterval) {
+      window._timerInterval = setInterval(() => updateTimerBar(state), 250);
+    }
+  } else {
+    if (window._timerInterval) { clearInterval(window._timerInterval); window._timerInterval = null; }
+    document.getElementById('timer-box').style.display = 'none';
+  }
 
   if (state.phase === 'lobby') {
     renderLobby();
@@ -522,22 +532,22 @@ function teamName(tid) {
 window.addEventListener('resize', () => { if (state && state.phase !== 'lobby') renderMap(); });
 
 function updateTimerBar(s) {
-  const ov = document.getElementById('board-overlay');
-  if (!s.phaseEndTime || s.phase === 'reveal' || s.phase === 'gameover') {
-    ov.innerHTML = ''; return;
-  }
+  const box = document.getElementById('timer-box');
   const now = Date.now();
-  const total = s.phase === 'action' && s.currentActorId === s.myPlayerId
-    ? (s.actionEndTime - (s.phaseEndTime - (s.phase === 'rps' ? 20000 : s.phase === 'prepare' ? 5000 : 15000)))
-    : (s.phaseEndTime - now + (s.phaseEndTime < now ? 5000 : 0));
-  
-  // Simpler: just show remaining seconds
-  const endTime = (s.phase === 'action' && s.currentActorId === s.myPlayerId) ? s.actionEndTime : s.phaseEndTime;
-  const remaining = Math.max(0, Math.round((endTime - now) / 1000));
-  const pct = Math.min(100, Math.max(0, remaining / (s.phase === 'prepare' ? 5 : s.phase === 'rps' ? 20 : 15) * 100));
-  const urgent = remaining <= 3;
-  const label = s.phase === 'prepare' ? `🎭 公开宣言 ${remaining}s`
-    : s.phase === 'rps' ? `✊ 选择手势 ${remaining}s`
-    : `⚡ 行动 ${remaining}s`;
-  ov.innerHTML = `<div style="text-align:center;font-size:13px;color:#ffd700;margin-bottom:2px;">${label}</div><div class="timer-bar"><div class="timer-bar-fill${urgent?' urgent':''}" style="width:${pct}%"></div></div>`;
+  const isAction = s.phase === 'action' && s.currentActorId === s.myPlayerId;
+  const endTime = isAction ? (s.actionEndTime || 0) : (s.phaseEndTime || 0);
+  const remaining = Math.max(0, endTime - now);
+  if (remaining <= 0) {
+    box.style.display = 'none';
+    if (window._timerInterval) { clearInterval(window._timerInterval); window._timerInterval = null; }
+    return;
+  }
+  const sec = Math.ceil(remaining / 1000);
+  const total = s.phase === 'prepare' ? 5 : s.phase === 'rps' ? 20 : 15;
+  const pct = Math.min(100, Math.max(0, (remaining / (total * 1000)) * 100));
+  const urgent = sec <= 3;
+  const label = s.phase === 'prepare' ? `🎭 公开宣言` : s.phase === 'rps' ? `✊ 选择手势` : `⚡ 行动`;
+  box.style.display = '';
+  box.innerHTML = `<h3>${label} <span style="float:right;color:${urgent?'#e74c3c':'#ffd700'}">${sec}s</span></h3>
+    <div class="timer-bar"><div class="timer-bar-fill${urgent?' urgent':''}" style="width:${pct}%"></div></div>`;
 }

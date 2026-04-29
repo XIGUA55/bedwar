@@ -53,6 +53,7 @@
 <div id="board-overlay"></div>
 </div>
 <div id="panel">
+<div class="p-section" id="timer-box" style="display:none;"></div>
 <div class="p-section" id="teams-status"></div>
 <div class="p-section" id="rps-section"></div>
 <div class="p-section" id="action-section"></div>
@@ -121,7 +122,8 @@ let state = null;
 let myPlayerId = null;
 let myCode = null;
 let prevState = null;
-let flashBeds = new Set();  // bed location IDs that just got destroyed
+let flashBeds = new Set();
+window._timerInterval = null;
 
 // ==================== SOCKET ====================
 function connect() {
