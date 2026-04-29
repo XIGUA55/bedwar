@@ -12,6 +12,17 @@
 <div id="conn-status"><span id="conn-dot">●</span> <span id="conn-text">连接中...</span></div>
 <div id="toasts"></div>
 
+<div id="debug-panel">
+  <h3 onclick="document.getElementById('debug-body').classList.toggle('collapsed')">🔧 调试</h3>
+  <div class="debug-body" id="debug-body">
+    <button onclick="doDebug('autoRPS')">✊ 自动填拳</button>
+    <button onclick="doDebug('skip')">⏩ 跳过计时</button>
+    <button onclick="doDebug('addBot')">🤖 添加Bot</button>
+    <button onclick="doDebug('quickStart')">🚀 快速开局(4Bot)</button>
+    <button onclick="showDebugState()">📋 查看状态</button>
+  </div>
+</div>
+
 <div id="lobby">
 <div class="lobby-card">
 <h3>🎮 创建房间</h3>
@@ -60,6 +71,8 @@
 <div class="p-section" id="log-box"><h3>📜 战报</h3><div id="log-entries"></div></div>
 </div>
 </div>
+</div>
+
 <div id="chat-panel">
   <h3 id="chat-header" onclick="toggleChat()">💬 聊天 <span id="chat-toggle-arrow">▾</span></h3>
   <div id="chat-body">
@@ -70,7 +83,6 @@
       <button class="chat-send-btn" onclick="sendChat()">发送</button>
     </div>
   </div>
-</div>
 </div>
 
 <div id="gameover-overlay"><div class="go-card" id="go-content"></div></div>
@@ -106,7 +118,6 @@
     <p>屏幕底部固定聊天栏，全程可用（赛前/赛中/赛后），支持 Emoji。</p>
     <button class="help-close" onclick="closeHelp()">知道了</button>
   </div>
-</div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -248,6 +259,42 @@ function renderQuickChat() {
 function quickSay(msg) {
   document.getElementById('chat-input').value = msg;
   sendChat();
+}
+
+// ==================== DEBUG ====================
+if (location.search.includes('debug')) {
+  document.getElementById('debug-panel').style.display = 'block';
+}
+
+function doDebug(cmd) {
+  if (!myCode) { alert('请先创建/加入房间'); return; }
+  if (cmd === 'autoRPS') { socket.emit('debugAutoRPS'); }
+  else if (cmd === 'skip') { socket.emit('debugSkipTimer'); }
+  else if (cmd === 'addBot') { socket.emit('debugAddBot'); }
+  else if (cmd === 'quickStart') {
+    const numTeams = 4;
+    socket.emit('createRoom', { numTeams, name: 'Host' }, (res) => {
+      if (!res.ok) return;
+      myCode = res.code; myPlayerId = res.playerId;
+      // Add bots
+      let added = 0;
+      function addBot() {
+        if (added >= numTeams - 1) {
+          socket.emit('startGame');
+          return;
+        }
+        socket.emit('debugAddBot');
+        added++;
+        setTimeout(addBot, 300);
+      }
+      setTimeout(addBot, 500);
+    });
+  }
+}
+
+function showDebugState() {
+  console.log('STATE:', JSON.stringify(state, null, 2));
+  alert(JSON.stringify({ phase: state?.phase, code: state?.code, players: state?.players?.length }, null, 2));
 }
 
 // ==================== INIT ====================

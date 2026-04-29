@@ -148,6 +148,50 @@ io.on('connection', (socket) => {
     });
   });
 
+  // ==================== DEBUG ====================
+  socket.on('debugAutoRPS', (data) => {
+    const rec = socketRooms[socket.id];
+    if (!rec) return;
+    const room = rooms[rec.code];
+    if (!room || room.phase !== 'rps') return;
+    const choices = ['rock','paper','scissors'];
+    for (const p of room.alivePlayers()) {
+      if (room.rpsChoices[p.id] === undefined) {
+        room.rpsChoices[p.id] = choices[Math.floor(Math.random()*3)];
+      }
+    }
+    if (room.allRPSReady()) room.resolveRPS();
+    broadcast(room);
+  });
+
+  socket.on('debugSkipTimer', (data) => {
+    const rec = socketRooms[socket.id];
+    if (!rec) return;
+    const room = rooms[rec.code];
+    if (!room) return;
+    if (room._timer) { clearTimeout(room._timer); room._timer = null; }
+    if (room.phase === 'prepare') { room._startRPSTimer(); }
+    else if (room.phase === 'rps') { for (const p of room.alivePlayers()) { if (room.rpsChoices[p.id] === undefined) room.rpsChoices[p.id] = 'rock'; } if (room.alivePlayers().length > 0) room.resolveRPS(); }
+    else if (room.phase === 'action') { const a = room.currentActor(); if (a) room.passAction(a.id); }
+    broadcast(room);
+  });
+
+  socket.on('debugAddBot', (data) => {
+    const rec = socketRooms[socket.id];
+    if (!rec) return;
+    const room = rooms[rec.code];
+    if (!room) return;
+    if (room.allClaimed()) return;
+    const botName = '🤖 Bot' + (room.players.length + 1);
+    const botSid = 'bot_' + Math.random().toString(36).slice(2, 8);
+    const player = room.addPlayer(botSid, botName);
+    if (player) {
+      player.connected = true;
+      room.addLog(`🤖 ${botName} 加入（调试模式）`, 'info');
+      broadcast(room);
+    }
+  });
+
   socket.on('disconnect', () => {
     const rec = socketRooms[socket.id];
     if (rec) {
