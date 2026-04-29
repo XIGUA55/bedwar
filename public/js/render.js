@@ -20,13 +20,8 @@ function render() {
   document.getElementById('lobby').style.display = isLobby ? 'flex' : 'none';
   document.getElementById('room-lobby').style.display = isLobby ? '' : 'none';
   document.getElementById('game').style.display = (!isLobby) ? 'flex' : 'none';
-  // Chat always visible once in a room
-  document.getElementById('chat-panel').style.display = (state.code && state.phase !== 'setup') ? 'block' : 'none';
-  if (state.code && state.phase !== 'setup') {
-    document.body.classList.add('chat-open');
-  } else {
-    document.body.classList.remove('chat-open');
-  }
+  // Chat: always visible when in a room (inside #game, so follows game visibility)
+  document.getElementById('chat-panel').style.display = (state.code && state.phase !== 'setup') ? 'flex' : 'none';
   document.getElementById('board-overlay').innerHTML = '';
 
   // Timer interval management

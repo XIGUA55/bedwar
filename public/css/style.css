@@ -102,26 +102,31 @@ h1 { text-align: center; font-size: 24px; color: #ff6b6b; text-shadow: 0 0 20px 
 #board-overlay .msg { font-size: 20px; color: #ffd700; text-shadow: 0 0 12px rgba(255,215,0,0.6); }
 
 /* ===== CHAT ===== */
-#chat-panel { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; margin: 0 auto; max-width: 1100px; background: #1a1a40; border: 1px solid #555; border-bottom: none; border-radius: 10px 10px 0 0; overflow: hidden; }
-#chat-panel h3 { font-size: 12px; color: #ff6b6b; padding: 6px 10px; border-bottom: 1px solid #444; margin: 0; background: #222248; cursor: pointer; user-select: none; }
+#chat-panel { display: none; width: 230px; flex-shrink: 0; flex-direction: column; background: #1a1a40; border: 1px solid #333; border-radius: 10px; overflow: hidden; }
+#chat-header { font-size: 12px; color: #ff6b6b; padding: 6px 10px; border-bottom: 1px solid #333; margin: 0; background: #222248; cursor: pointer; user-select: none; }
+#chat-header:hover { background: #2a2a58; }
+#chat-toggle-arrow { float: right; transition: transform 0.2s; }
+#chat-panel.collapsed #chat-body { display: none; }
+#chat-panel.collapsed #chat-toggle-arrow { transform: rotate(-90deg); }
 #chat-placeholder { padding: 10px; text-align: center; color: #666; font-size: 11px; }
-#chat-msgs { height: 140px; overflow-y: auto; padding: 6px 10px; background: #1a1a40; }
-.chat-msg { padding: 2px 0; font-size: 12px; word-break: break-word; }
-.chat-msg .cteam { margin-right: 2px; }
-.chat-msg .csender { font-weight: bold; margin-right: 4px; }
-.chat-msg .ctext { color: #ccc; }
-.chat-msg .ctime { font-size: 10px; color: #555; margin-right: 4px; }
-#chat-input { flex: 1; padding: 10px 10px; border: none; background: #252550; color: #e0e0e0; font-size: 14px; outline: none; font-family: inherit; }
-.chat-input-row { display: flex; }
+#chat-msgs { flex: 1; overflow-y: auto; padding: 6px 10px; background: #1a1a40; min-height: 80px; }
+#chat-input { flex: 1; padding: 8px 8px; border: none; background: #252550; color: #e0e0e0; font-size: 13px; outline: none; font-family: inherit; }
+.chat-input-row { display: flex; border-top: 1px solid #333; }
 #chat-input::placeholder { color: #555; }
-.chat-send-btn { padding: 10px 16px; border: none; background: #ff6b6b; color: #fff; font-size: 14px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+.chat-send-btn { padding: 8px 12px; border: none; background: #ff6b6b; color: #fff; font-size: 13px; cursor: pointer; font-weight: bold; white-space: nowrap; }
 .chat-send-btn:hover { background: #ee5a5a; }
 
 /* Quick chat */
-.quick-chat-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; border-top: 1px solid #2a2a40; }
-.qc-btn { padding: 4px 10px; border-radius: 12px; border: 1px solid #444; background: #2a2a50; color: #ccc; font-size: 11px; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+.quick-chat-row { display: flex; flex-wrap: wrap; gap: 3px; padding: 4px 6px; border-top: 1px solid #2a2a40; border-bottom: 1px solid #2a2a40; max-height: 80px; overflow-y: auto; }
+.qc-btn { padding: 3px 8px; border-radius: 12px; border: 1px solid #444; background: #2a2a50; color: #ccc; font-size: 10px; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
 .qc-btn:hover { border-color: #ffd700; background: #3a3a60; color: #fff; }
 .qc-btn:active { transform: scale(0.95); }
+
+.chat-msg { padding: 2px 0; font-size: 11px; word-break: break-word; }
+.chat-msg .cteam { margin-right: 2px; }
+.chat-msg .csender { font-weight: bold; margin-right: 2px; }
+.chat-msg .ctext { color: #ccc; }
+.chat-msg .ctime { font-size: 9px; color: #555; margin-right: 4px; }
 /* when chat is shown, add bottom padding to app so game content isn't hidden */
 #app { padding-bottom: 0; }
 body.chat-open #app { padding-bottom: 180px; }
@@ -170,13 +175,13 @@ body.chat-open #app { padding-bottom: 180px; }
   /* Log: shorter */
   #log-box { max-height: 120px; }
 
-  /* Chat: compact */
-  #chat-panel { border-radius: 8px 8px 0 0; }
-  #chat-panel h3 { font-size: 11px; padding: 4px 8px; }
-  #chat-msgs { height: 100px; }
+  /* Chat: wide sidebar above panel */
+  #chat-panel { width: 100%; max-height: 40vh; }
+  #chat-panel.collapsed { max-height: none; }
+  #chat-msgs { height: 150px; }
   #chat-input { font-size: 15px; padding: 10px 8px; }
   .chat-send-btn { padding: 10px 14px; font-size: 14px; }
-  body.chat-open #app { padding-bottom: 160px; }
+  .quick-chat-row { max-height: 70px; }
 
   /* Gameover */
   .go-card { padding: 24px; margin: 16px; max-width: 90vw; }
@@ -206,10 +211,9 @@ body.chat-open #app { padding-bottom: 180px; }
   .rps-big-btn .label-big { font-size: 15px; }
   .rps-status-row { font-size: 12px; }
 
-  #chat-msgs { height: 80px; }
+  #chat-msgs { height: 120px; }
   #chat-input { font-size: 14px; }
   .chat-msg { font-size: 11px; }
-  body.chat-open #app { padding-bottom: 140px; }
 
   #log-box { max-height: 100px; }
   .go-card h2 { font-size: 20px; }

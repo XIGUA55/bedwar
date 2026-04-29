@@ -60,15 +60,17 @@
 <div class="p-section" id="log-box"><h3>📜 战报</h3><div id="log-entries"></div></div>
 </div>
 </div>
-
 <div id="chat-panel">
-  <h3>💬 聊天</h3>
-  <div id="chat-msgs"><div id="chat-placeholder">暂无消息，输入内容开始聊天...</div></div>
-  <div class="quick-chat-row" id="quick-chat"></div>
-  <div class="chat-input-row">
-    <input type="text" id="chat-input" maxlength="200" placeholder="发送消息... 支持 emoji 😄" autocomplete="off">
-    <button class="chat-send-btn" onclick="sendChat()">发送</button>
+  <h3 id="chat-header" onclick="toggleChat()">💬 聊天 <span id="chat-toggle-arrow">▾</span></h3>
+  <div id="chat-body">
+    <div id="chat-msgs"><div id="chat-placeholder">暂无消息，输入内容开始聊天...</div></div>
+    <div class="quick-chat-row" id="quick-chat"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chat-input" maxlength="200" placeholder="发送消息... 支持 emoji 😄" autocomplete="off">
+      <button class="chat-send-btn" onclick="sendChat()">发送</button>
+    </div>
   </div>
+</div>
 </div>
 
 <div id="gameover-overlay"><div class="go-card" id="go-content"></div></div>
@@ -251,6 +253,10 @@ function quickSay(msg) {
 // ==================== INIT ====================
 document.getElementById('chat-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 renderQuickChat();
+
+function toggleChat() {
+  document.getElementById('chat-panel').classList.toggle('collapsed');
+}
 connect();
 </script>
 </body>
