@@ -245,3 +245,8 @@ body.chat-open #app { padding-bottom: 180px; }
 .timer-bar-fill { height: 100%; background: #ffd700; transition: width 0.3s linear; }
 .timer-bar-fill.urgent { background: #e74c3c; }
 .timer-text { font-size: 10px; color: #888; text-align: center; }
+
+/* Last stand effect */
+.p-token.laststand { box-shadow: 0 0 6px #ff6b6b, 0 0 12px rgba(255,107,107,0.5); animation: lastGlow 1s ease-in-out infinite alternate; }
+@keyframes lastGlow { from { box-shadow: 0 0 4px #ff6b6b; } to { box-shadow: 0 0 10px #ff6b6b, 0 0 20px rgba(255,107,107,0.6); } }
+.laststand-label { position: absolute; top: -36px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: bold; color: #ff6b6b; white-space: nowrap; pointer-events: none; z-index: 5; text-shadow: 0 0 4px rgba(255,0,0,0.5); }

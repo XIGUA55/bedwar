@@ -176,7 +176,11 @@ function renderMap() {
       for (const p of here) {
         const tc = state.teams.find(x => x.id === p.team);
         const extra = p.respawning ? ' style="opacity:0.5"' : '';
-        html += `<span class="p-token"${extra} style="background:${tc?tc.color:'#888'}" title="${p.name + (p.respawning?' (复活中)':'')}">${tc?tc.emoji:'?'}</span>`;
+        const lsClass = p.isLastStand ? ' laststand' : '';
+        html += `<span class="p-token${lsClass}"${extra} style="background:${tc?tc.color:'#888'}" title="${p.name + (p.respawning?' (复活中)':'') + (p.isLastStand?' 🔥背水一战':'')}">${tc?tc.emoji:'?'}</span>`;
+        if (p.isLastStand) {
+          html += `<span class="laststand-label">🔥 背水一战</span>`;
+        }
       }
       html += '</div>';
     }
