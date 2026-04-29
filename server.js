@@ -5,36 +5,11 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const { GameRoom } = require('./lib/game');
-const cookieParser = require('cookie-parser');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-
-// Set persistent account cookie, read existing one
-app.use(cookieParser());
-app.use((req, res, next) => {
-  if (!req.cookies.bedwar_account) {
-    const id = require('crypto').randomUUID().replace(/-/g, '').substring(0, 12);
-    res.cookie('bedwar_account', id, { maxAge: 365 * 24 * 60 * 60 * 1000, httpOnly: true, path: '/' });
-    req._accountId = id;
-  } else {
-    req._accountId = req.cookies.bedwar_account;
-  }
-  next();
-});
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Extract account ID from handshake cookie
-io.use((socket, next) => {
-  const raw = (socket.handshake.headers.cookie || '').split(';');
-  for (const c of raw) {
-    const [k, v] = c.trim().split('=');
-    if (k === 'bedwar_account') { socket._accountId = v; break; }
-  }
-  if (!socket._accountId) socket._accountId = require('crypto').randomUUID().replace(/-/g, '').substring(0, 12);
-  next();
-});
 
 // ==================== ROOM MANAGER ====================
 const rooms = {};           // code -> GameRoom
@@ -61,8 +36,7 @@ io.on('connection', (socket) => {
     const room = new GameRoom(code, numTeams, io);
     rooms[code] = room;
     const name = String(data.name || '').trim().substring(0, 16) || null;
-    const accountKey = (socket._accountId || 'anon') + '::' + (name || 'unknown');
-    const player = room.addPlayer(socket.id, name, accountKey);
+    const player = room.addPlayer(socket.id, name);
     if (!player) { callback({ ok: false, error: '房间创建失败' }); return; }
     socketRooms[socket.id] = { code, playerId: player.id };
     socket.join(code);
@@ -77,8 +51,7 @@ io.on('connection', (socket) => {
     if (!room) { callback({ ok: false, error: '房间不存在' }); return; }
     if (room.phase !== 'lobby') { callback({ ok: false, error: '游戏已开始' }); return; }
     const name = String(data.name || '').trim().substring(0, 16) || null;
-    const accountKey = (socket._accountId || 'anon') + '::' + (name || 'unknown');
-    const player = room.addPlayer(socket.id, name, accountKey);
+    const player = room.addPlayer(socket.id, name);
     if (!player) { callback({ ok: false, error: '房间已满' }); return; }
     socketRooms[socket.id] = { code, playerId: player.id };
     socket.join(code);
