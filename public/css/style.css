@@ -130,7 +130,7 @@ h1 { text-align: center; font-size: 24px; color: #ff6b6b; text-shadow: 0 0 20px 
 .chat-msg .ctime { font-size: 9px; color: #555; margin-right: 4px; }
 
 /* When chat visible, make room for it */
-body.chat-visible #app { margin-left: 0; margin-right: 250px; max-width: calc(1100px - 250px); }
+body.chat-visible #app { max-width: min(1100px, calc(100vw - 260px)); margin: 0 auto; }
 /* when chat is shown, add bottom padding to app so game content isn't hidden */
 #app { padding-bottom: 0; }
 body.chat-open #app { padding-bottom: 180px; }
